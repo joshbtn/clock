@@ -1,0 +1,41 @@
+# Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# PlatformIO
+.pio/
+.pioenvs/
+.piolibdeps/
+
+# Build artifacts
+*.o
+*.obj
+*.hex
+*.elf
+*.bin
+*.a
+*.so
+*.dylib
+*.dll
+*.out
+*.exe
+*.d
+*.map
+*.lst
+*.lss
+*.sym
+*.eep
+*.srec
+*.ihex
+
+# Temporary files
+*.tmp
+*.bak

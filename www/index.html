@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Clock Sync Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background-color: #0a0a0a; color: #fbbf24; }
+        .card { background-color: #171717; border: 1px solid #262626; }
+    </style>
+</head>
+<body class="flex items-center justify-center min-h-screen p-4">
+    <div class="card w-full max-w-md p-6 rounded-2xl shadow-2xl">
+        <h1 class="text-2xl font-bold mb-2 text-center">Clock Dashboard</h1>
+        <p class="text-neutral-500 text-sm mb-6 text-center">Ultra-Compact Bedroom Sync</p>
+        
+        <div id="status" class="mb-6 p-3 rounded-lg bg-neutral-900 border border-neutral-800 text-center text-sm">
+            Status: Disconnected
+        </div>
+
+        <button id="connect" class="w-full py-4 bg-amber-500 hover:bg-amber-600 text-black font-bold rounded-xl transition-all mb-4">
+            Connect to Clock
+        </button>
+
+        <div class="space-y-4 opacity-50 pointer-events-none" id="controls">
+            <button id="syncTime" class="w-full py-3 bg-neutral-800 hover:bg-neutral-700 text-white rounded-lg border border-neutral-700 transition-all">
+                Sync Phone Time & DST
+            </button>
+            
+            <div class="grid grid-cols-2 gap-3 text-center text-xs text-neutral-400">
+                <div class="p-2 border border-neutral-800 rounded-lg">
+                    TZ: <span id="tzDisplay">--</span>
+                </div>
+                <div class="p-2 border border-neutral-800 rounded-lg">
+                    DST: <span id="dstDisplay">--</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let port;
+        let writer;
+
+        const connectBtn = document.getElementById('connect');
+        const statusDiv = document.getElementById('status');
+        const controls = document.getElementById('controls');
+        const syncBtn = document.getElementById('syncTime');
+
+        connectBtn.addEventListener('click', async () => {
+            try {
+                port = await navigator.serial.requestPort();
+                await port.open({ baudRate: 9600 });
+                writer = port.writable.getWriter();
+                
+                statusDiv.innerText = "Status: Connected";
+                statusDiv.classList.add('text-green-500');
+                controls.classList.remove('opacity-50', 'pointer-events-none');
+                connectBtn.innerText = "Device Ready";
+                
+                // Auto Detect Local TZ
+                const offset = -new Date().getTimezoneOffset();
+                document.getElementById('tzDisplay').innerText = (offset/60) + "h";
+                document.getElementById('dstDisplay').innerText = isDST() ? "Active" : "Standard";
+
+            } catch (err) {
+                statusDiv.innerText = "Error: " + err.message;
+            }
+        });
+
+        syncBtn.addEventListener('click', async () => {
+            const unixTime = Math.floor(Date.now() / 1000);
+            const offset = -new Date().getTimezoneOffset();
+            
+            // Send Time: T[timestamp]
+            const timeCmd = `T${unixTime}\n`;
+            // Send Zone: Z[offset]
+            const zoneCmd = `Z${offset}\n`;
+
+            await writer.write(new TextEncoder().encode(timeCmd));
+            await new Promise(r => setTimeout(r, 100));
+            await writer.write(new TextEncoder().encode(zoneCmd));
+            
+            statusDiv.innerText = "Status: Successfully Synced!";
+        });
+
+        function isDST() {
+            const today = new Date();
+            const jan = new Date(today.getFullYear(), 0, 1);
+            const jul = new Date(today.getFullYear(), 6, 1);
+            return today.getTimezoneOffset() < Math.max(jan.getTimezoneOffset(), jul.getTimezoneOffset());
+        }
+    </script>
+</body>
+</html>
