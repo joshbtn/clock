@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Clock Sync Dashboard</title>
+    <link rel="icon" type="image/svg+xml" href="favicon.svg">
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         body { background-color: #0a0a0a; color: #fbbf24; }
@@ -171,8 +172,25 @@
                     </div>
                 </div>
                 
-                <div class="p-2 border border-neutral-800 rounded-lg text-xs text-neutral-400">
-                    Serial: <span id="serialLog" class="text-neutral-300">--</span>
+                <div class="p-2 border border-neutral-800 rounded-lg">
+                    <div class="flex justify-between items-center">
+                        <div class="text-xs text-neutral-400">
+                            Serial: <span id="serialLog" class="text-neutral-300">--</span>
+                        </div>
+                        <button id="toggleConsole" class="text-xs bg-neutral-800 hover:bg-neutral-700 text-amber-400 px-2 py-1 rounded transition-all">
+                            Show Console
+                        </button>
+                    </div>
+                    
+                    <!-- Console Panel (hidden by default) -->
+                    <div id="consolePanel" class="hidden mt-2 p-2 bg-neutral-950 border border-neutral-800 rounded text-xs font-mono">
+                        <div id="consoleLogs" class="h-48 overflow-y-auto space-y-1 text-neutral-400">
+                            <div class="text-neutral-600">Console ready...</div>
+                        </div>
+                        <button id="clearConsole" class="w-full mt-2 py-1 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 rounded text-xs transition-all">
+                            Clear Console
+                        </button>
+                    </div>
                 </div>
 
                 <!-- Sync Settings Button -->
@@ -224,6 +242,13 @@
         const brightBrightnessSlider = document.getElementById('brightBrightness');
         const brightBrightnessValue = document.getElementById('brightBrightnessValue');
         const scheduleStatus = document.getElementById('scheduleStatus');
+
+        // Console elements
+        const toggleConsoleBtn = document.getElementById('toggleConsole');
+        const consolePanel = document.getElementById('consolePanel');
+        const consoleLogs = document.getElementById('consoleLogs');
+        const clearConsoleBtn = document.getElementById('clearConsole');
+        let messageLog = [];
 
         async function cleanupSerialConnection() {
             try {
@@ -278,10 +303,24 @@
         };
 
         // ============= Serial Communication =============
+        function addToMessageLog(message) {
+            messageLog.push(message);
+            updateConsoleDisplay();
+        }
+
+        function updateConsoleDisplay() {
+            consoleLogs.innerHTML = messageLog
+                .map((msg, idx) => `<div><span class="text-neutral-600">[${idx + 1}]</span> ${msg}</div>`)
+                .join('');
+            // Auto-scroll to bottom
+            consoleLogs.scrollTop = consoleLogs.scrollHeight;
+        }
+
         function handleArduinoLine(line) {
             if (!line) return;
 
             console.log('Arduino response:', line);
+            addToMessageLog(line);
             serialLog.innerText = line;
 
             if (line.startsWith('ERR:F')) {
@@ -496,6 +535,17 @@
             brightBrightnessValue.innerText = e.target.value;
         });
 
+        // Console toggle
+        toggleConsoleBtn.addEventListener('click', () => {
+            consolePanel.classList.toggle('hidden');
+            toggleConsoleBtn.innerText = consolePanel.classList.contains('hidden') ? 'Show Console' : 'Hide Console';
+        });
+
+        clearConsoleBtn.addEventListener('click', () => {
+            messageLog = [];
+            consoleLogs.innerHTML = '<div class="text-neutral-600">Console cleared...</div>';
+        });
+
         async function syncScheduleSettings() {
             try {
                 scheduleStatus.innerText = 'Syncing...';
@@ -572,12 +622,14 @@
                 statusDiv.innerText = `Status: Synced to ${tzName}! ${month}/${day}/${year} ${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
                 statusDiv.classList.remove('text-red-500');
                 statusDiv.classList.add('text-green-500');
+                serialLog.innerText = 'done';
 
             } catch (err) {
                 console.error('Sync error:', err);
                 statusDiv.innerText = "Status: Sync failed - " + err.message;
                 statusDiv.classList.remove('text-green-500');
                 statusDiv.classList.add('text-red-500');
+                serialLog.innerText = 'error';
             } finally {
                 syncSettingsBtn.disabled = false;
             }
