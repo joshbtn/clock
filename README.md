@@ -2,7 +2,9 @@
 
 An ultra-minimalist, high-precision digital clock designed for the bedroom. This project focuses on a tiny footprint, eye-friendly yellow LED illumination, and zero-maintenance timekeeping through automatic Daylight Savings (DST) adjustments.
 
-## Key Features
+** Web Serial Interface:** [https://joshbtn.github.io/clock/](https://joshbtn.github.io/clock/)
+
+## 🚀 Key Features
 
 - **Warm Glow**: Uses a Yellow 0.56" TM1637 Display for minimal blue light exposure.
 - **Set-and-Forget**: Automatically handles DST and timezones via software logic stored in the Nano's 1KB EEPROM.
