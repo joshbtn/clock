@@ -207,12 +207,25 @@ void handleSerial() {
       }
       else if (buf[0] == 'F') {
         // F<0|1> (0=24h, 1=12h)
-        int f = atoi(buf + 1);
-        if (f == 0 || f == 1) {
+        int f;
+        if (sscanf(buf + 1, "%d", &f) == 1 && (f == 0 || f == 1)) {
           EEPROM.update(ADDR_FORMAT_12H, f);
           updateDisplay();
+          uint8_t stored = EEPROM.read(ADDR_FORMAT_12H);
+          DateTime now = rtc.now();
+          uint8_t shownHour = (stored == 1) ? format12Hour(now.hour()) : now.hour();
+          Serial.print("DBG:F requested=");
+          Serial.print(f);
+          Serial.print(" stored=");
+          Serial.print(stored);
+          Serial.print(" rtcHour24=");
+          Serial.print(now.hour());
+          Serial.print(" shownHour=");
+          Serial.println(shownHour);
           Serial.print("OK:F");
-          Serial.println(f);
+          Serial.println(stored);
+        } else {
+          Serial.println("ERR:F expected 0 or 1");
         }
       }
       else if (buf[0] == 'Z') {

@@ -112,6 +112,10 @@
                         Auto-Sync: <span id="autoSyncStatus">Off</span>
                     </div>
                 </div>
+
+                <div class="p-2 border border-neutral-800 rounded-lg text-xs text-neutral-400">
+                    Serial: <span id="serialLog" class="text-neutral-300">--</span>
+                </div>
             </div>
         </div>
 
@@ -130,6 +134,7 @@
         let reader;
         let dstTableLoaded = false;
         let dstRules = null;
+        let serialRxBuffer = '';
 
         const connectBtn = document.getElementById('connect');
         const statusDiv = document.getElementById('status');
@@ -145,6 +150,7 @@
         const dstStatus = document.getElementById('dstStatus');
         const dstDisplay = document.getElementById('dstDisplay');
         const autoSyncStatus = document.getElementById('autoSyncStatus');
+        const serialLog = document.getElementById('serialLog');
 
         // ============= DST Table Generator =============
         function generateDSTRules() {
@@ -203,13 +209,49 @@
         }
 
         // ============= Serial Communication =============
+        function handleArduinoLine(line) {
+            if (!line) return;
+
+            console.log('Arduino response:', line);
+            serialLog.innerText = line;
+
+            if (line.startsWith('ERR:F')) {
+                statusDiv.innerText = `Status: Format switch failed (${line})`;
+                statusDiv.classList.remove('text-green-500');
+                statusDiv.classList.add('text-red-500');
+                return;
+            }
+
+            if (line.startsWith('OK:F')) {
+                const applied = line.slice(4).trim();
+                const formatLabel = applied === '1' ? '12-Hour' : '24-Hour';
+                statusDiv.innerText = `Status: Format ACK from device: ${formatLabel}`;
+                statusDiv.classList.remove('text-red-500');
+                statusDiv.classList.add('text-green-500');
+                return;
+            }
+
+            if (line.startsWith('DBG:F')) {
+                statusDiv.innerText = `Status: ${line}`;
+                statusDiv.classList.remove('text-red-500');
+                statusDiv.classList.add('text-green-500');
+            }
+        }
+
         async function readLoop() {
             try {
                 while (true) {
                     const { value, done } = await reader.read();
                     if (done) break;
                     const text = new TextDecoder().decode(value);
-                    console.log('Arduino response:', text.trim());
+                    serialRxBuffer += text;
+
+                    let newlineIndex;
+                    while ((newlineIndex = serialRxBuffer.search(/[\r\n]/)) !== -1) {
+                        const line = serialRxBuffer.slice(0, newlineIndex).trim();
+                        serialRxBuffer = serialRxBuffer.slice(newlineIndex + 1);
+                        handleArduinoLine(line);
+                    }
                 }
             } catch (err) {
                 console.error('Read error:', err);
