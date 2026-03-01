@@ -28,6 +28,16 @@
                 Sync Phone Time & DST
             </button>
             
+            <div class="p-4 border border-neutral-800 rounded-lg">
+                <label class="block text-sm mb-2 text-neutral-400">Display Brightness</label>
+                <div class="flex items-center gap-3">
+                    <span class="text-xs text-neutral-500">Low</span>
+                    <input type="range" id="brightness" min="0" max="7" value="5" class="flex-1 h-2 bg-neutral-800 rounded-lg appearance-none cursor-pointer accent-amber-500">
+                    <span class="text-xs text-neutral-500">High</span>
+                </div>
+                <div class="text-center text-xs text-neutral-400 mt-2">Level: <span id="brightnessValue">5</span></div>
+            </div>
+            
             <div class="grid grid-cols-2 gap-3 text-center text-xs text-neutral-400">
                 <div class="p-2 border border-neutral-800 rounded-lg">
                     TZ: <span id="tzDisplay">--</span>
@@ -47,6 +57,8 @@
         const statusDiv = document.getElementById('status');
         const controls = document.getElementById('controls');
         const syncBtn = document.getElementById('syncTime');
+        const brightnessSlider = document.getElementById('brightness');
+        const brightnessValue = document.getElementById('brightnessValue');
 
         connectBtn.addEventListener('click', async () => {
             try {
@@ -70,19 +82,60 @@
         });
 
         syncBtn.addEventListener('click', async () => {
-            const unixTime = Math.floor(Date.now() / 1000);
-            const offset = -new Date().getTimezoneOffset();
-            
-            // Send Time: T[timestamp]
-            const timeCmd = `T${unixTime}\n`;
-            // Send Zone: Z[offset]
-            const zoneCmd = `Z${offset}\n`;
+            try {
+                syncBtn.disabled = true;
+                syncBtn.innerText = "Syncing...";
+                statusDiv.innerText = "Status: Sending data...";
+                
+                const unixTime = Math.floor(Date.now() / 1000);
+                const offset = -new Date().getTimezoneOffset();
+                
+                // Send Time: T[timestamp]
+                const timeCmd = `T${unixTime}\n`;
+                // Send Zone: Z[offset]
+                const zoneCmd = `Z${offset}\n`;
 
-            await writer.write(new TextEncoder().encode(timeCmd));
-            await new Promise(r => setTimeout(r, 100));
-            await writer.write(new TextEncoder().encode(zoneCmd));
-            
-            statusDiv.innerText = "Status: Successfully Synced!";
+                console.log('Sending time command:', timeCmd.trim());
+                await writer.write(new TextEncoder().encode(timeCmd));
+                await new Promise(r => setTimeout(r, 100));
+                
+                console.log('Sending zone command:', zoneCmd.trim());
+                await writer.write(new TextEncoder().encode(zoneCmd));
+                
+                statusDiv.innerText = "Status: Successfully Synced!";
+                statusDiv.classList.add('text-green-500');
+                
+            } catch (err) {
+                console.error('Sync error:', err);
+                statusDiv.innerText = "Status: Sync Failed - " + err.message;
+                statusDiv.classList.remove('text-green-500');
+                statusDiv.classList.add('text-red-500');
+            } finally {
+                syncBtn.disabled = false;
+                syncBtn.innerText = "Sync Phone Time & DST";
+            }
+        brightnessSlider.addEventListener('input', (e) => {
+            brightnessValue.innerText = e.target.value;
+        });
+
+        brightnessSlider.addEventListener('change', async (e) => {
+            try {
+                const brightness = e.target.value;
+                const brightnessCmd = `B${brightness}\n`;
+                
+                console.log('Setting brightness:', brightnessCmd.trim());
+                await writer.write(new TextEncoder().encode(brightnessCmd));
+                
+                statusDiv.innerText = `Status: Brightness set to ${brightness}`;
+                statusDiv.classList.add('text-green-500');
+                
+            } catch (err) {
+                console.error('Brightness error:', err);
+                statusDiv.innerText = "Status: Failed to set brightness";
+                statusDiv.classList.add('text-red-500');
+            }
+        });
+
         });
 
         function isDST() {
