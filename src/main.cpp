@@ -108,25 +108,41 @@ void updateDisplay() {
   uint8_t m = now.minute();
   
   uint8_t format = EEPROM.read(ADDR_FORMAT_12H);
-  int time;
-  uint8_t decimalMask = 0b01000000;  // Middle colon (between digits 1-2)
+  
+  // 7-segment encoding (0-9)
+  const uint8_t digitToSegment[] = {
+    0x3F, // 0
+    0x06, // 1
+    0x5B, // 2
+    0x4F, // 3
+    0x66, // 4
+    0x6D, // 5
+    0x7D, // 6
+    0x07, // 7
+    0x7F, // 8
+    0x6F  // 9
+  };
   
   if (format == 1) {
-    // 12-hour format: display as H:MM (no leading zero)
+    // 12-hour format
     h = format12Hour(h);
-    
-    // Light the last dot if PM (12:00 and onward)
-    if (now.hour() >= 12) {
-      decimalMask = 0xFF;  // Temporarily light ALL dots to identify which is last
-    }
-    
-    time = h * 100 + m;
-  } else {
-    // 24-hour format: display as HH:MM
-    time = h * 100 + m;
   }
   
-  display.showNumberDecEx(time, decimalMask, format != 1); // Leading zero in 24-hour mode only
+  // Split time into digits
+  uint8_t digit0 = h / 10;
+  uint8_t digit1 = h % 10;
+  uint8_t digit2 = m / 10;
+  uint8_t digit3 = m % 10;
+  
+  // Build segment array
+  uint8_t segments[4];
+  segments[0] = (digit0 == 0 && format == 1) ? 0x00 : digitToSegment[digit0];  // Hide leading zero in 12h
+  segments[1] = digitToSegment[digit1] | 0x80;  // Always show colon (bit 7 of digit 1)
+  segments[2] = digitToSegment[digit2];
+  segments[3] = digitToSegment[digit3];
+  
+  // Display all segments
+  display.setSegments(segments, 4, 0);
 }
 
 
