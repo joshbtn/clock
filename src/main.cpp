@@ -117,7 +117,7 @@ void updateDisplay() {
     
     // Light the last dot if PM (12:00 and onward)
     if (now.hour() >= 12) {
-      decimalMask |= 0b00010000;  // Add last dot for PM
+      decimalMask = 0xFF;  // Temporarily light ALL dots to identify which is last
     }
     
     time = h * 100 + m;
