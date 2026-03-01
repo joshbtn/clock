@@ -315,17 +315,13 @@
                 await sendCommand(`T${h},${m},${s}\n`);
                 await new Promise(r => setTimeout(r, 100));
                 
-                // Load DST rules
-                const dstBlob = createDSTBinaryBlob();
-                // Convert blob to string for transmission (Arduino will parse)
-                // For now, send via Web Serial as raw bytes
-                await writer.write(dstBlob);
-                await new Promise(r => setTimeout(r, 100));
+                // Keep line-based protocol clean; avoid raw binary payloads.
+                // DST upload remains pending until framed LOAD protocol is implemented.
                 
-                dstTableLoaded = true;
-                dstStatus.innerText = "Loaded ✓";
+                dstTableLoaded = false;
+                dstStatus.innerText = "Pending (LOAD protocol)";
                 dstStatus.classList.remove('text-neutral-500');
-                dstStatus.classList.add('text-green-500');
+                dstStatus.classList.add('text-amber-400');
                 autoSyncStatus.innerText = "Enabled";
                 
                 statusDiv.innerText = `Status: Setup complete! ${month}/${day}/${year} ${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
@@ -390,18 +386,15 @@
         loadDSTBtn.addEventListener('click', async () => {
             try {
                 loadDSTBtn.disabled = true;
-                statusDiv.innerText = "Status: Loading DST rules...";
-                
-                const dstBlob = createDSTBinaryBlob();
-                await writer.write(dstBlob);
-                
-                dstTableLoaded = true;
-                dstStatus.innerText = "Loaded ✓";
-                dstStatus.classList.remove('text-neutral-500');
-                dstStatus.classList.add('text-green-500');
-                
-                statusDiv.innerText = "Status: DST rules loaded (2026-2035)";
-                statusDiv.classList.add('text-green-500');
+                const _dstBlob = createDSTBinaryBlob();
+                statusDiv.innerText = "Status: DST upload skipped (needs framed LOAD protocol)";
+                statusDiv.classList.remove('text-red-500');
+                statusDiv.classList.add('text-amber-400');
+
+                dstTableLoaded = false;
+                dstStatus.innerText = "Pending (LOAD protocol)";
+                dstStatus.classList.remove('text-neutral-500', 'text-green-500');
+                dstStatus.classList.add('text-amber-400');
                 
             } catch (err) {
                 console.error('DST load error:', err);

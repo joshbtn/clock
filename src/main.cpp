@@ -56,7 +56,7 @@ void updateDisplay() {
     time = h * 100 + m;
   }
   
-  display.showNumberDecEx(time, 0b01000000, format == 1); // No leading zero in 12-hour mode
+  display.showNumberDecEx(time, 0b01000000, format != 1); // Leading zero in 24-hour mode only
 }
 
 // Check if today is a DST transition date and update dstActive flag
@@ -172,6 +172,7 @@ void handleSerial() {
     if (c == '\n' || c == '\r') {
       if (pos == 0) continue;  // skip empty lines
       buf[pos] = '\0';
+      uint8_t cmdLen = pos;
       pos = 0;
 
       // Parse command from buffer
@@ -254,7 +255,7 @@ void handleSerial() {
         // LOAD<binary_data>
         // Format: L<length_byte><40_bytes_of_DST_data>
         // For simplicity, we expect exactly 40 bytes after "LOAD:"
-        if (pos >= 45) {  // "LOAD" (4) + ":" (1) + 40 bytes = 45
+        if (cmdLen >= 45) {  // "LOAD" (4) + ":" (1) + 40 bytes = 45
           // Extract 40 bytes starting after "LOAD:"
           uint8_t i = 0;
           char* ptr = buf + 5;  // skip "LOAD:"
@@ -264,10 +265,18 @@ void handleSerial() {
           }
           if (i == 40) {
             parseDSTTable(binaryBuffer, 40);
+          } else {
+            Serial.println("ERR:LOAD invalid payload");
           }
+        } else {
+          Serial.println("ERR:LOAD too short");
         }
         // Note: In practice, binary upload would use Web Serial's writableStreamDefaultWriter
         // and send raw bytes. This is a simplified ASCII fallback.
+      }
+      else {
+        Serial.print("ERR:UNKNOWN ");
+        Serial.println(buf);
       }
 
       return;
