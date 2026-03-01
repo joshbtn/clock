@@ -488,44 +488,13 @@
             brightnessValue.innerText = e.target.value;
         });
 
-        // Schedule event listeners
-        scheduleEnabledToggle.addEventListener('change', async (e) => {
-            if (isUpdatingFromDevice || !isConnected) return;
-            try {
-                const enabled = e.target.checked ? 1 : 0;
-                await sendCommand(`S${enabled}\n`);
-                scheduleStatus.innerText = 'Updating...';
-            } catch (err) {
-                console.error('Schedule enable error:', err);
-            }
-        });
-
+        // Schedule brightness display updates (input only, no auto-sync)
         dimBrightnessSlider.addEventListener('input', (e) => {
             dimBrightnessValue.innerText = e.target.value;
         });
 
         brightBrightnessSlider.addEventListener('input', (e) => {
             brightBrightnessValue.innerText = e.target.value;
-        });
-
-        dimTimeInput.addEventListener('change', async (e) => {
-            if (isUpdatingFromDevice || !isConnected) return;
-            await syncScheduleSettings();
-        });
-
-        dimBrightnessSlider.addEventListener('change', async (e) => {
-            if (isUpdatingFromDevice || !isConnected) return;
-            await syncScheduleSettings();
-        });
-
-        brightTimeInput.addEventListener('change', async (e) => {
-            if (isUpdatingFromDevice || !isConnected) return;
-            await syncScheduleSettings();
-        });
-
-        brightBrightnessSlider.addEventListener('change', async (e) => {
-            if (isUpdatingFromDevice || !isConnected) return;
-            await syncScheduleSettings();
         });
 
         async function syncScheduleSettings() {
