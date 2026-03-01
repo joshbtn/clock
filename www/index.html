@@ -52,6 +52,7 @@
     <script>
         let port;
         let writer;
+        let reader;
 
         const connectBtn = document.getElementById('connect');
         const statusDiv = document.getElementById('status');
@@ -60,11 +61,29 @@
         const brightnessSlider = document.getElementById('brightness');
         const brightnessValue = document.getElementById('brightnessValue');
 
+        // Read responses from Arduino
+        async function readLoop() {
+            try {
+                while (true) {
+                    const { value, done } = await reader.read();
+                    if (done) break;
+                    const text = new TextDecoder().decode(value);
+                    console.log('Arduino response:', text.trim());
+                }
+            } catch (err) {
+                console.error('Read error:', err);
+            }
+        }
+
         connectBtn.addEventListener('click', async () => {
             try {
                 port = await navigator.serial.requestPort();
                 await port.open({ baudRate: 9600 });
                 writer = port.writable.getWriter();
+                reader = port.readable.getReader();
+                
+                // Start reading responses
+                readLoop();
                 
                 statusDiv.innerText = "Status: Connected";
                 statusDiv.classList.add('text-green-500');
@@ -114,6 +133,8 @@
                 syncBtn.disabled = false;
                 syncBtn.innerText = "Sync Phone Time & DST";
             }
+        });
+
         brightnessSlider.addEventListener('input', (e) => {
             brightnessValue.innerText = e.target.value;
         });
@@ -134,8 +155,6 @@
                 statusDiv.innerText = "Status: Failed to set brightness";
                 statusDiv.classList.add('text-red-500');
             }
-        });
-
         });
 
         function isDST() {

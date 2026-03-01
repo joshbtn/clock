@@ -89,21 +89,35 @@ void loop() {
 
 void handleSerial() {
   char cmd = Serial.read();
+  
   if (cmd == 'T') { // Sync Time (Unix)
     uint32_t t = Serial.parseInt();
-    rtc.adjust(DateTime(t));
-    wakeUp = true;
-  if (cmd == 'B') { // Set Brightness (0-7)
+    if (t > 0) {
+      rtc.adjust(DateTime(t));
+      wakeUp = true;
+      Serial.print("OK:T");
+      Serial.println(t);
+    }
+  }
+  else if (cmd == 'Z') { // Set Timezone Offset
+    int offset = Serial.parseInt();
+    EEPROM.update(ADDR_TZ_OFFSET, offset);
+    Serial.print("OK:Z");
+    Serial.println(offset);
+  }
+  else if (cmd == 'B') { // Set Brightness (0-7)
     uint8_t brightness = Serial.parseInt();
     if (brightness <= 7) {
       EEPROM.update(ADDR_BRIGHTNESS, brightness);
       display.setBrightness(brightness);
       wakeUp = true; // Refresh display to show new brightness
+      Serial.print("OK:B");
+      Serial.println(brightness);
     }
   }
-  }
-  if (cmd == 'Z') { // Set Timezone Offset
-    int offset = Serial.parseInt();
-    EEPROM.update(ADDR_TZ_OFFSET, offset);
+  
+  // Clear any remaining serial buffer
+  while (Serial.available() > 0) {
+    Serial.read();
   }
 }
