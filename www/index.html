@@ -106,30 +106,19 @@
                 syncBtn.innerText = "Syncing...";
                 statusDiv.innerText = "Status: Sending data...";
                 
-                // Get current UTC timestamp
-                const nowUTC = Math.floor(Date.now() / 1000);
+                // Get local time directly - no timestamp math
+                const now = new Date();
+                const h = now.getHours();
+                const m = now.getMinutes();
+                const s = now.getSeconds();
                 
-                // Get timezone offset in seconds (JS returns negative for west of UTC)
-                const offsetMinutes = -new Date().getTimezoneOffset();
-                const offsetSeconds = offsetMinutes * 60;
-                
-                // Adjust timestamp so Arduino displays LOCAL time
-                // (Arduino interprets timestamp as UTC, so we "fake" it)
-                const localAsUTC = nowUTC + offsetSeconds;
-                
-                // Send adjusted time: T[timestamp]
-                const timeCmd = `T${localAsUTC}\n`;
-                // Send offset (ignored by Arduino, but keeps protocol compatible)
-                const zoneCmd = `Z${offsetMinutes}\n`;
+                // Send time as simple components: T<hour>,<minute>,<second>
+                const timeCmd = `T${h},${m},${s}\n`;
 
                 console.log('Sending time command:', timeCmd.trim());
                 await writer.write(new TextEncoder().encode(timeCmd));
-                await new Promise(r => setTimeout(r, 100));
                 
-                console.log('Sending zone command:', zoneCmd.trim());
-                await writer.write(new TextEncoder().encode(zoneCmd));
-                
-                statusDiv.innerText = "Status: Successfully Synced!";
+                statusDiv.innerText = `Status: Synced to ${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
                 statusDiv.classList.add('text-green-500');
                 
             } catch (err) {

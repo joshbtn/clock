@@ -3,88 +3,75 @@
 #include <RTClib.h>
 #include <TM1637Display.h>
 
-// Pins
-#define CLK 3
-#define DIO 4
+#define CLK_PIN 3
+#define DIO_PIN 4
+#define ADDR_BRIGHTNESS 0
 
-TM1637Display display(CLK, DIO);
+TM1637Display display(CLK_PIN, DIO_PIN);
 RTC_DS3231 rtc;
-
-// EEPROM address for brightness (0-7)
-const int ADDR_BRIGHTNESS = 0;
-
-void handleSerial();
-void updateDisplay();
-
-void setup() {
-  Serial.begin(9600);
-  Wire.begin();
-  rtc.begin();
-
-  // If DS3231 battery died, default to midnight
-  if (rtc.lostPower()) {
-    rtc.adjust(DateTime(2026, 1, 1, 0, 0, 0));
-  }
-
-  // Load brightness from EEPROM (default 5 if unset)
-  uint8_t brightness = EEPROM.read(ADDR_BRIGHTNESS);
-  if (brightness > 7) brightness = 5;
-  display.setBrightness(brightness);
-
-  // Show time immediately on boot
-  updateDisplay();
-}
-
-void loop() {
-  // Check for serial commands
-  if (Serial.available() > 0) {
-    handleSerial();
-  }
-
-  // Update display every loop (TM1637 handles redundant writes fine)
-  updateDisplay();
-
-  delay(500); // Update twice per second
-}
 
 void updateDisplay() {
   DateTime now = rtc.now();
-  int displayTime = (now.hour() * 100) + now.minute();
-  display.showNumberDecEx(displayTime, 0b01000000, true);
+  int time = now.hour() * 100 + now.minute();
+  display.showNumberDecEx(time, 0b01000000, true);
 }
 
 void handleSerial() {
   char cmd = Serial.read();
 
   if (cmd == 'T') {
-    // UI sends local time as Unix timestamp
-    uint32_t t = Serial.parseInt();
-    if (t > 0) {
-      rtc.adjust(DateTime(t));
+    // T<hour>,<minute>,<second>  — set local time
+    int h = Serial.parseInt();
+    int m = Serial.parseInt();
+    int s = Serial.parseInt();
+    if (h >= 0 && h <= 23 && m >= 0 && m <= 59 && s >= 0 && s <= 59) {
+      DateTime now = rtc.now();
+      rtc.adjust(DateTime(now.year(), now.month(), now.day(), h, m, s));
       updateDisplay();
       Serial.print("OK:T");
-      Serial.println(t);
+      Serial.print(h); Serial.print(":");
+      Serial.print(m); Serial.print(":");
+      Serial.println(s);
+    }
+  }
+  else if (cmd == 'B') {
+    // B<0-7>  — set brightness
+    uint8_t b = Serial.parseInt();
+    if (b <= 7) {
+      EEPROM.update(ADDR_BRIGHTNESS, b);
+      display.setBrightness(b);
+      updateDisplay();
+      Serial.print("OK:B");
+      Serial.println(b);
     }
   }
   else if (cmd == 'Z') {
-    // Just acknowledge (UI already adjusted for timezone)
-    int offset = Serial.parseInt();
+    // Acknowledge only (timezone handled by UI)
     Serial.print("OK:Z");
-    Serial.println(offset);
-  }
-  else if (cmd == 'B') {
-    uint8_t brightness = Serial.parseInt();
-    if (brightness <= 7) {
-      EEPROM.update(ADDR_BRIGHTNESS, brightness);
-      display.setBrightness(brightness);
-      updateDisplay();
-      Serial.print("OK:B");
-      Serial.println(brightness);
-    }
+    Serial.println(Serial.parseInt());
   }
 
-  // Flush remaining serial buffer
-  while (Serial.available() > 0) {
-    Serial.read();
+  while (Serial.available()) Serial.read();
+}
+
+void setup() {
+  Serial.begin(9600);
+  Wire.begin();
+  rtc.begin();
+
+  if (rtc.lostPower()) {
+    rtc.adjust(DateTime(2026, 1, 1, 0, 0, 0));
   }
+
+  uint8_t brightness = EEPROM.read(ADDR_BRIGHTNESS);
+  if (brightness > 7) brightness = 5;
+  display.setBrightness(brightness);
+
+  updateDisplay();
+}
+
+void loop() {
+  if (Serial.available()) handleSerial();
+  updateDisplay();
+  delay(500);
 }
