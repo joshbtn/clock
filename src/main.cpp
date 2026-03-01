@@ -2,7 +2,6 @@
 #include <EEPROM.h>
 #include <RTClib.h>
 #include <TM1637Display.h>
-#include <Timezone.h>
 #include <avr/sleep.h>
 
 // Pins
@@ -14,14 +13,25 @@ TM1637Display display(CLK, DIO);
 RTC_DS3231 rtc;
 
 // EEPROM Addresses
-const int ADDR_TZ_OFFSET = 0;
-const int ADDR_DST_MODE = 1; // 0: Manual, 1: Auto
-const int ADDR_BRIGHTNESS = 2; // 0-7 brightness level
+const int ADDR_TZ_OFFSET_LOW = 0;  // Low byte of timezone offset in minutes
+const int ADDR_TZ_OFFSET_HIGH = 1; // High byte of timezone offset in minutes
+const int ADDR_BRIGHTNESS = 2;     // 0-7 brightness level
 
-// Timezone Rules (Default: US Eastern)
-TimeChangeRule usEDT = {"EDT", Second, Sun, Mar, 2, -240};
-TimeChangeRule usEST = {"EST", First, Sun, Nov, 2, -300};
-Timezone myTZ(usEDT, usEST);
+// Helper function to read signed 16-bit timezone offset from EEPROM
+int16_t readTimezoneOffset() {
+  int16_t offset = (EEPROM.read(ADDR_TZ_OFFSET_HIGH) << 8) | EEPROM.read(ADDR_TZ_OFFSET_LOW);
+  // Default to -300 (EST, -5 hours) if uninitialized
+  if (offset == -1 || offset < -720 || offset > 720) {
+    offset = -300;
+  }
+  return offset;
+}
+
+// Helper function to write signed 16-bit timezone offset to EEPROM
+void writeTimezoneOffset(int16_t offset) {
+  EEPROM.update(ADDR_TZ_OFFSET_LOW, offset & 0xFF);
+  EEPROM.update(ADDR_TZ_OFFSET_HIGH, (offset >> 8) & 0xFF);
+}
 
 volatile bool wakeUp = true;
 
@@ -40,9 +50,9 @@ void setup() {
   if (brightness > 7) brightness = 5; // Default to mid-level
   display.setBrightness(brightness);
   
-  // Set SQW to 1Hz or 1-minute pulse if supported, 
-  // but for simplicity, we wake on signal.
-  rtc.writeSqwPinMode(DS3231_OFF); // Reset
+  // Enable SQW at 1Hz to trigger wake interrupt every second
+  // This allows both periodic display updates AND serial responsiveness
+  rtc.writeSqwPinMode(DS3231_SquareWave1Hz);
   rtc.disable32K();
 }
 
@@ -51,8 +61,9 @@ void wakeHandler() {
 }
 
 void goToSleep() {
-  display.setBrightness(0x00, false); // Turn off display for extra saving
-  set_sleep_mode(SLEEP_MODE_PWR_DOWN);
+  // Use IDLE mode instead of PWR_DOWN to keep USART active for serial commands
+  // Display stays on (USB powered, no need to turn off)
+  set_sleep_mode(SLEEP_MODE_IDLE);
   sleep_enable();
   attachInterrupt(digitalPinToInterrupt(WAKE_PIN), wakeHandler, FALLING);
   sleep_cpu();
@@ -70,9 +81,15 @@ void loop() {
   if (wakeUp) {
     DateTime now = rtc.now();
     time_t utc = now.unixtime();
-    time_t local = myTZ.toLocal(utc);
     
-    int displayTime = (hour(local) * 100) + minute(local);
+    // Apply timezone offset from EEPROM (in minutes)
+    int16_t tzOffset = readTimezoneOffset();
+    time_t local = utc + (tzOffset * 60);
+    
+    // Extract hours and minutes from local time
+    int hrs = (local / 3600) % 24;
+    int mins = (local / 60) % 60;
+    int displayTime = (hrs * 100) + mins;
     
     // Load brightness from EEPROM
     uint8_t brightness = EEPROM.read(ADDR_BRIGHTNESS);
@@ -82,7 +99,7 @@ void loop() {
     display.showNumberDecEx(displayTime, 0b01000000, true);
     
     wakeUp = false;
-    delay(2000); // Wait for visibility
+    delay(100); // Brief delay then back to sleep (wakes every 1s via RTC)
     goToSleep();
   }
 }
@@ -99,11 +116,14 @@ void handleSerial() {
       Serial.println(t);
     }
   }
-  else if (cmd == 'Z') { // Set Timezone Offset
-    int offset = Serial.parseInt();
-    EEPROM.update(ADDR_TZ_OFFSET, offset);
-    Serial.print("OK:Z");
-    Serial.println(offset);
+  else if (cmd == 'Z') { // Set Timezone Offset (in minutes)
+    int16_t offset = Serial.parseInt();
+    if (offset >= -720 && offset <= 720) { // Validate range (-12h to +12h)
+      writeTimezoneOffset(offset);
+      wakeUp = true; // Refresh display with new timezone
+      Serial.print("OK:Z");
+      Serial.println(offset);
+    }
   }
   else if (cmd == 'B') { // Set Brightness (0-7)
     uint8_t brightness = Serial.parseInt();
