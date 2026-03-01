@@ -132,6 +132,7 @@
         let port;
         let writer;
         let reader;
+        let isConnected = false;
         let dstTableLoaded = false;
         let dstRules = null;
         let serialRxBuffer = '';
@@ -151,6 +152,31 @@
         const dstDisplay = document.getElementById('dstDisplay');
         const autoSyncStatus = document.getElementById('autoSyncStatus');
         const serialLog = document.getElementById('serialLog');
+
+        async function cleanupSerialConnection() {
+            try {
+                if (reader) {
+                    try { await reader.cancel(); } catch (_) {}
+                    try { reader.releaseLock(); } catch (_) {}
+                    reader = null;
+                }
+
+                if (writer) {
+                    try { writer.releaseLock(); } catch (_) {}
+                    writer = null;
+                }
+
+                if (port) {
+                    try { await port.close(); } catch (_) {}
+                    port = null;
+                }
+            } catch (_) {}
+
+            isConnected = false;
+            connectBtn.disabled = false;
+            connectBtn.innerText = 'Connect to Clock';
+            controls.classList.add('opacity-50', 'pointer-events-none');
+        }
 
         // ============= DST Table Generator =============
         function generateDSTRules() {
@@ -282,10 +308,21 @@
         // ============= Event Listeners =============
         connectBtn.addEventListener('click', async () => {
             try {
-                port = await navigator.serial.requestPort();
+                if (isConnected) {
+                    await cleanupSerialConnection();
+                }
+
+                const existingPorts = await navigator.serial.getPorts();
+                if (existingPorts.length > 0) {
+                    port = existingPorts[0];
+                } else {
+                    port = await navigator.serial.requestPort();
+                }
+
                 await port.open({ baudRate: 9600 });
                 writer = port.writable.getWriter();
                 reader = port.readable.getReader();
+                isConnected = true;
                 
                 readLoop();
                 
@@ -293,8 +330,8 @@
                 statusDiv.classList.add('text-green-500');
                 statusDiv.classList.remove('text-neutral-400');
                 controls.classList.remove('opacity-50', 'pointer-events-none');
-                connectBtn.innerText = "✓ Device Ready";
-                connectBtn.disabled = true;
+                connectBtn.innerText = "Reconnect";
+                connectBtn.disabled = false;
                 
                 // Update timezone display
                 updateTimezoneDisplay();
@@ -305,6 +342,16 @@
                 statusDiv.classList.add('text-red-500');
             }
         });
+
+        if (navigator.serial) {
+            navigator.serial.addEventListener('disconnect', async () => {
+                serialLog.innerText = 'Device disconnected';
+                statusDiv.innerText = 'Status: Device disconnected. Click Connect.';
+                statusDiv.classList.remove('text-green-500');
+                statusDiv.classList.add('text-red-500');
+                await cleanupSerialConnection();
+            });
+        }
 
         initialSetupBtn.addEventListener('click', async () => {
             try {
