@@ -80,11 +80,11 @@ void loop() {
 
   if (wakeUp) {
     DateTime now = rtc.now();
-    time_t utc = now.unixtime();
+    uint32_t utc = now.unixtime();
     
     // Apply timezone offset from EEPROM (in minutes)
     int16_t tzOffset = readTimezoneOffset();
-    time_t local = utc + (tzOffset * 60);
+    uint32_t local = utc + (tzOffset * 60);
     
     // Extract hours and minutes from local time
     int hrs = (local / 3600) % 24;
