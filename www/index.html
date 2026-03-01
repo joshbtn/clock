@@ -58,11 +58,6 @@
             </button>
 
             <div class="space-y-4 opacity-50 pointer-events-none" id="controls">
-                <!-- Initial Setup Section -->
-                <button id="initialSetup" class="w-full py-3 bg-green-700 hover:bg-green-800 text-white rounded-lg border border-green-600 transition-all font-semibold">
-                    Initial Setup: Sync Date & Time
-                </button>
-                
                 <!-- Format Toggle -->
                 <div class="p-4 border border-neutral-800 rounded-lg">
                     <label class="block text-sm mb-3 text-neutral-400">Display Format</label>
@@ -85,15 +80,6 @@
                         <option value="-8">Pacific (PST/PDT)</option>
                     </select>
                     <div class="text-center text-xs text-neutral-500 mt-2">Offset: <span id="tzDisplay">UTC</span></div>
-                </div>
-
-                <!-- DST Rules Upload -->
-                <div class="p-4 border border-neutral-800 rounded-lg">
-                    <label class="block text-sm mb-2 text-neutral-400">DST Rules (2026-2035)</label>
-                    <button id="loadDSTRules" class="w-full py-2 bg-blue-700 hover:bg-blue-800 text-white rounded text-sm transition-all">
-                        Load US DST Rules
-                    </button>
-                    <div class="text-center text-xs text-neutral-500 mt-2">Status: <span id="dstStatus">Not Loaded</span></div>
                 </div>
                 
                 <!-- Brightness Control -->
@@ -120,6 +106,11 @@
                 <div class="p-2 border border-neutral-800 rounded-lg text-xs text-neutral-400">
                     Serial: <span id="serialLog" class="text-neutral-300">--</span>
                 </div>
+
+                <!-- Sync Settings Button -->
+                <button id="syncSettings" class="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg border border-blue-500 transition-all font-semibold">
+                    Sync Settings to Device
+                </button>
             </div>
         </div>
 
@@ -146,18 +137,16 @@
         const disconnectBtn = document.getElementById('disconnect');
         const statusDiv = document.getElementById('status');
         const controls = document.getElementById('controls');
-        const initialSetupBtn = document.getElementById('initialSetup');
         const format12hToggle = document.getElementById('format12h');
         const formatDisplay = document.getElementById('formatDisplay');
         const timezoneSelect = document.getElementById('timezone');
         const tzDisplay = document.getElementById('tzDisplay');
         const brightnessSlider = document.getElementById('brightness');
         const brightnessValue = document.getElementById('brightnessValue');
-        const loadDSTBtn = document.getElementById('loadDSTRules');
-        const dstStatus = document.getElementById('dstStatus');
         const dstDisplay = document.getElementById('dstDisplay');
         const autoSyncStatus = document.getElementById('autoSyncStatus');
         const serialLog = document.getElementById('serialLog');
+        const syncSettingsBtn = document.getElementById('syncSettings');
 
         async function cleanupSerialConnection() {
             try {
@@ -371,11 +360,35 @@
             });
         }
 
-        initialSetupBtn.addEventListener('click', async () => {
+        format12hToggle.addEventListener('change', (e) => {
+            if (isUpdatingFromDevice) {
+                return;
+            }
+            const formatLabel = e.target.checked ? '12-Hour' : '24-Hour';
+            formatDisplay.innerText = formatLabel;
+            localStorage.setItem('format12h', e.target.checked ? '1' : '0');
+        });
+
+        timezoneSelect.addEventListener('change', (e) => {
+            const option = e.target.options[e.target.selectedIndex];
+            tzDisplay.innerText = option.text;
+            localStorage.setItem('timezone', e.target.value);
+        });
+
+        brightnessSlider.addEventListener('input', (e) => {
+            brightnessValue.innerText = e.target.value;
+        });
+
+        syncSettingsBtn.addEventListener('click', async () => {
             try {
-                initialSetupBtn.disabled = true;
-                statusDiv.innerText = "Status: Performing initial setup...";
-                
+                syncSettingsBtn.disabled = true;
+                statusDiv.innerText = "Status: Syncing settings...";
+                statusDiv.classList.remove('text-red-500');
+                statusDiv.classList.add('text-green-500');
+
+                const format = format12hToggle.checked ? 1 : 0;
+                const brightness = parseInt(brightnessSlider.value);
+                const timezone = parseInt(timezoneSelect.value);
                 const now = new Date();
                 const h = now.getHours();
                 const m = now.getMinutes();
@@ -383,127 +396,36 @@
                 const month = now.getMonth() + 1;
                 const day = now.getDate();
                 const year = now.getFullYear();
-                
-                // Send date
+
+                // Send all settings in sequence
                 await sendCommand(`D${month},${day},${year}\n`);
-                await new Promise(r => setTimeout(r, 100));
-                
-                // Send time
+                await new Promise(r => setTimeout(r, 50));
+
                 await sendCommand(`T${h},${m},${s}\n`);
-                await new Promise(r => setTimeout(r, 100));
-                
-                // Keep line-based protocol clean; avoid raw binary payloads.
-                // DST upload remains pending until framed LOAD protocol is implemented.
-                
-                dstTableLoaded = false;
-                dstStatus.innerText = "Pending (LOAD protocol)";
-                dstStatus.classList.remove('text-neutral-500');
-                dstStatus.classList.add('text-amber-400');
-                autoSyncStatus.innerText = "Enabled";
-                
-                statusDiv.innerText = `Status: Setup complete! ${month}/${day}/${year} ${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
-                statusDiv.classList.remove('text-red-500');
-                statusDiv.classList.add('text-green-500');
-                
-            } catch (err) {
-                console.error('Setup error:', err);
-                statusDiv.innerText = "Status: Setup failed - " + err.message;
-                statusDiv.classList.add('text-red-500');
-            } finally {
-                initialSetupBtn.disabled = false;
-            }
-        });
+                await new Promise(r => setTimeout(r, 50));
 
-        format12hToggle.addEventListener('change', async (e) => {
-            try {
-                if (isUpdatingFromDevice) {
-                    return;
-                }
-
-                const format = e.target.checked ? 1 : 0;
-                const formatLabel = format === 1 ? '12-Hour' : '24-Hour';
-                formatDisplay.innerText = formatLabel;
-                
                 await sendCommand(`F${format}\n`);
-                await new Promise(r => setTimeout(r, 120));
+                await new Promise(r => setTimeout(r, 50));
+
+                await sendCommand(`Z${timezone}\n`);
+                await new Promise(r => setTimeout(r, 50));
+
+                await sendCommand(`B${brightness}\n`);
+                await new Promise(r => setTimeout(r, 50));
+
                 await sendCommand('QF\n');
-                
-                statusDiv.innerText = `Status: Format set to ${formatLabel}`;
-                statusDiv.classList.add('text-green-500');
-                
-                // Save preference
-                localStorage.setItem('format12h', format);
-                
-            } catch (err) {
-                console.error('Format error:', err);
-                statusDiv.innerText = "Status: Failed to set format";
-                statusDiv.classList.add('text-red-500');
-            }
-        });
 
-        timezoneSelect.addEventListener('change', async (e) => {
-            try {
-                const offset = parseInt(e.target.value);
-                const option = e.target.options[e.target.selectedIndex];
-                const label = option.text;
-                
-                await sendCommand(`Z${offset}\n`);
-                
-                tzDisplay.innerText = label;
-                localStorage.setItem('timezone', offset);
-                
-                // Update DST status
-                const now = new Date();
-                dstDisplay.innerText = isDSTActive(now) ? 'Active' : 'Standard';
-                
-                statusDiv.innerText = `Status: Timezone set to ${label}`;
-                statusDiv.classList.add('text-green-500');
-                
-            } catch (err) {
-                console.error('Timezone error:', err);
-                statusDiv.innerText = "Status: Failed to set timezone";
-                statusDiv.classList.add('text-red-500');
-            }
-        });
-
-        loadDSTBtn.addEventListener('click', async () => {
-            try {
-                loadDSTBtn.disabled = true;
-                const _dstBlob = createDSTBinaryBlob();
-                statusDiv.innerText = "Status: DST upload skipped (needs framed LOAD protocol)";
+                statusDiv.innerText = `Status: Settings synced! ${month}/${day}/${year} ${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
                 statusDiv.classList.remove('text-red-500');
-                statusDiv.classList.add('text-amber-400');
+                statusDiv.classList.add('text-green-500');
 
-                dstTableLoaded = false;
-                dstStatus.innerText = "Pending (LOAD protocol)";
-                dstStatus.classList.remove('text-neutral-500', 'text-green-500');
-                dstStatus.classList.add('text-amber-400');
-                
             } catch (err) {
-                console.error('DST load error:', err);
-                statusDiv.innerText = "Status: Failed to load DST rules";
+                console.error('Sync error:', err);
+                statusDiv.innerText = "Status: Sync failed - " + err.message;
+                statusDiv.classList.remove('text-green-500');
                 statusDiv.classList.add('text-red-500');
             } finally {
-                loadDSTBtn.disabled = false;
-            }
-        });
-
-        brightnessSlider.addEventListener('input', (e) => {
-            brightnessValue.innerText = e.target.value;
-        });
-
-        brightnessSlider.addEventListener('change', async (e) => {
-            try {
-                const brightness = e.target.value;
-                await sendCommand(`B${brightness}\n`);
-                
-                statusDiv.innerText = `Status: Brightness set to ${brightness}`;
-                statusDiv.classList.add('text-green-500');
-                
-            } catch (err) {
-                console.error('Brightness error:', err);
-                statusDiv.innerText = "Status: Failed to set brightness";
-                statusDiv.classList.add('text-red-500');
+                syncSettingsBtn.disabled = false;
             }
         });
 
