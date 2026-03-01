@@ -175,6 +175,9 @@ void handleSerial() {
       uint8_t cmdLen = pos;
       pos = 0;
 
+      Serial.print("DBG:RX ");
+      Serial.println(buf);
+
       // Parse command from buffer
       if (buf[0] == 'T') {
         // T<hour>,<minute>,<second>
@@ -188,6 +191,8 @@ void handleSerial() {
           Serial.print(h); Serial.print(":");
           Serial.print(m); Serial.print(":");
           Serial.println(s);
+        } else {
+          Serial.println("ERR:T expected h,m,s");
         }
       }
       else if (buf[0] == 'D') {
@@ -204,7 +209,15 @@ void handleSerial() {
           Serial.print(m); Serial.print("/");
           Serial.print(d); Serial.print("/");
           Serial.println(y);
+        } else {
+          Serial.println("ERR:D expected m,d,y");
         }
+      }
+      else if (buf[0] == 'Q' && buf[1] == 'F' && buf[2] == '\0') {
+        uint8_t stored = EEPROM.read(ADDR_FORMAT_12H);
+        if (stored > 1) stored = 0;
+        Serial.print("OK:QF");
+        Serial.println(stored);
       }
       else if (buf[0] == 'F') {
         // F<0|1> (0=24h, 1=12h)
@@ -238,6 +251,8 @@ void handleSerial() {
           tzOffset = z + 12;
           Serial.print("OK:Z");
           Serial.println(z);
+        } else {
+          Serial.println("ERR:Z expected -12..14");
         }
       }
       else if (buf[0] == 'B') {
@@ -249,6 +264,8 @@ void handleSerial() {
           updateDisplay();
           Serial.print("OK:B");
           Serial.println(b);
+        } else {
+          Serial.println("ERR:B expected 0..7");
         }
       }
       else if (buf[0] == 'L' && buf[1] == 'O' && buf[2] == 'A' && buf[3] == 'D') {
@@ -283,6 +300,9 @@ void handleSerial() {
     }
     else if (pos < sizeof(buf) - 1) {
       buf[pos++] = c;
+    } else {
+      pos = 0;
+      Serial.println("ERR:RX overflow");
     }
   }
 }
@@ -317,7 +337,7 @@ void setup() {
 }
 
 void loop() {
-  if (Serial.available()) handleSerial();
+  handleSerial();
   
   // Auto-increment date every 24 hours
   autoIncrementDate();

@@ -231,6 +231,17 @@
                 return;
             }
 
+            if (line.startsWith('OK:QF')) {
+                const applied = line.slice(5).trim();
+                const is12 = applied === '1';
+                format12hToggle.checked = is12;
+                formatDisplay.innerText = is12 ? '12-Hour' : '24-Hour';
+                statusDiv.innerText = `Status: Device format is ${is12 ? '12-Hour' : '24-Hour'} (QF)`;
+                statusDiv.classList.remove('text-red-500');
+                statusDiv.classList.add('text-green-500');
+                return;
+            }
+
             if (line.startsWith('DBG:F')) {
                 statusDiv.innerText = `Status: ${line}`;
                 statusDiv.classList.remove('text-red-500');
@@ -287,6 +298,7 @@
                 
                 // Update timezone display
                 updateTimezoneDisplay();
+                await sendCommand('QF\n');
 
             } catch (err) {
                 statusDiv.innerText = "Error: " + err.message;
@@ -344,6 +356,8 @@
                 formatDisplay.innerText = formatLabel;
                 
                 await sendCommand(`F${format}\n`);
+                await new Promise(r => setTimeout(r, 120));
+                await sendCommand('QF\n');
                 
                 statusDiv.innerText = `Status: Format set to ${formatLabel}`;
                 statusDiv.classList.add('text-green-500');
