@@ -106,13 +106,21 @@
                 syncBtn.innerText = "Syncing...";
                 statusDiv.innerText = "Status: Sending data...";
                 
-                const unixTime = Math.floor(Date.now() / 1000);
-                const offset = -new Date().getTimezoneOffset();
+                // Get current UTC timestamp
+                const nowUTC = Math.floor(Date.now() / 1000);
                 
-                // Send Time: T[timestamp]
-                const timeCmd = `T${unixTime}\n`;
-                // Send Zone: Z[offset]
-                const zoneCmd = `Z${offset}\n`;
+                // Get timezone offset in seconds (JS returns negative for west of UTC)
+                const offsetMinutes = -new Date().getTimezoneOffset();
+                const offsetSeconds = offsetMinutes * 60;
+                
+                // Adjust timestamp so Arduino displays LOCAL time
+                // (Arduino interprets timestamp as UTC, so we "fake" it)
+                const localAsUTC = nowUTC + offsetSeconds;
+                
+                // Send adjusted time: T[timestamp]
+                const timeCmd = `T${localAsUTC}\n`;
+                // Send offset (ignored by Arduino, but keeps protocol compatible)
+                const zoneCmd = `Z${offsetMinutes}\n`;
 
                 console.log('Sending time command:', timeCmd.trim());
                 await writer.write(new TextEncoder().encode(timeCmd));
