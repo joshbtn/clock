@@ -24,6 +24,9 @@ void handleSerial() {
     int h = Serial.parseInt();
     int m = Serial.parseInt();
     int s = Serial.parseInt();
+    Serial.print("DBG:T h="); Serial.print(h);
+    Serial.print(" m="); Serial.print(m);
+    Serial.print(" s="); Serial.println(s);
     if (h >= 0 && h <= 23 && m >= 0 && m <= 59 && s >= 0 && s <= 59) {
       DateTime now = rtc.now();
       rtc.adjust(DateTime(now.year(), now.month(), now.day(), h, m, s));
@@ -58,10 +61,6 @@ void setup() {
   Serial.begin(9600);
   Wire.begin();
   rtc.begin();
-
-  if (rtc.lostPower()) {
-    rtc.adjust(DateTime(2026, 1, 1, 0, 0, 0));
-  }
 
   uint8_t brightness = EEPROM.read(ADDR_BRIGHTNESS);
   if (brightness > 7) brightness = 5;
