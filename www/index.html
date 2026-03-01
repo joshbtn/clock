@@ -136,6 +136,7 @@
         let dstTableLoaded = false;
         let dstRules = null;
         let serialRxBuffer = '';
+        let isUpdatingFromDevice = false;
 
         const connectBtn = document.getElementById('connect');
         const statusDiv = document.getElementById('status');
@@ -260,8 +261,10 @@
             if (line.startsWith('OK:QF')) {
                 const applied = line.slice(5).trim();
                 const is12 = applied === '1';
+                isUpdatingFromDevice = true;
                 format12hToggle.checked = is12;
                 formatDisplay.innerText = is12 ? '12-Hour' : '24-Hour';
+                isUpdatingFromDevice = false;
                 statusDiv.innerText = `Status: Device format is ${is12 ? '12-Hour' : '24-Hour'} (QF)`;
                 statusDiv.classList.remove('text-red-500');
                 statusDiv.classList.add('text-green-500');
@@ -398,6 +401,10 @@
 
         format12hToggle.addEventListener('change', async (e) => {
             try {
+                if (isUpdatingFromDevice) {
+                    return;
+                }
+
                 const format = e.target.checked ? 1 : 0;
                 const formatLabel = format === 1 ? '12-Hour' : '24-Hour';
                 formatDisplay.innerText = formatLabel;
