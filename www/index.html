@@ -109,16 +109,6 @@
                     <div class="text-center text-xs text-neutral-400 mt-2">Level: <span id="brightnessValue">5</span></div>
                 </div>
                 
-                <!-- Status Display -->
-                <div class="grid grid-cols-2 gap-3 text-center text-xs text-neutral-400">
-                    <div class="p-2 border border-neutral-800 rounded-lg">
-                        DST: <span id="dstDisplay">--</span>
-                    </div>
-                    <div class="p-2 border border-neutral-800 rounded-lg">
-                        Auto-Sync: <span id="autoSyncStatus">Off</span>
-                    </div>
-                </div>
-
                 <div class="p-2 border border-neutral-800 rounded-lg text-xs text-neutral-400">
                     Serial: <span id="serialLog" class="text-neutral-300">--</span>
                 </div>
@@ -160,8 +150,6 @@
         const tzDisplay = document.getElementById('tzDisplay');
         const brightnessSlider = document.getElementById('brightness');
         const brightnessValue = document.getElementById('brightnessValue');
-        const dstDisplay = document.getElementById('dstDisplay');
-        const autoSyncStatus = document.getElementById('autoSyncStatus');
         const serialLog = document.getElementById('serialLog');
         const syncSettingsBtn = document.getElementById('syncSettings');
 
@@ -428,10 +416,6 @@
             
             // Update DST display based on user's current system timezone
             // (Device will use its own algorithm when synced)
-            const now = new Date();
-            const tzId = parseInt(localStorage.getItem('timezone') || '0');
-            const config = timezoneConfig[tzId];
-            dstDisplay.innerText = config ? config.dstRule.toUpperCase() : 'NONE';
         }
 
         // Load saved preferences on page load
