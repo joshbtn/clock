@@ -34,6 +34,8 @@ const Timezone timezones[] = {
   {8,  -7, "Canada Mountain",     0},  // No DST
   {9,  -8, "Canada Pacific",      1},  // PST/PDT
   {10,  0, "UK London",           2},  // GMT/BST
+  {11, -7, "Arizona",             0},  // MST year-round, no DST
+  {12,-10, "Hawaii",              0},  // HST year-round, no DST
 };
 const uint8_t NUM_TIMEZONES = sizeof(timezones) / sizeof(timezones[0]);
 
@@ -304,9 +306,8 @@ void handleSerial() {
         }
       }
       else if (buf[0] == 'Z') {
-        // Z<tz_id> (0-11)
-        // 0=UTC, 1=USA_Eastern, 2=USA_Central, 3=USA_Mountain, 4=USA_Pacific,
-        // 5=Canada_Atlantic, 6=Canada_Eastern, 7=Canada_Central, 8=Canada_Mountain, 9=Canada_Pacific, 10=UK_London
+        // Z<tz_id> (0-12)
+        // 0=UTC, 1-4=USA, 5-9=Canada, 10=UK, 11=Arizona(no DST), 12=Hawaii(no DST)
         int z = atoi(buf + 1);
         if (z >= 0 && z < NUM_TIMEZONES) {
           EEPROM.update(ADDR_TZ_ID, z);
@@ -327,7 +328,7 @@ void handleSerial() {
           Serial.print("DBG:TZ ");
           Serial.println(tzName);
         } else {
-          Serial.println("ERR:Z expected 0..10");
+          Serial.println("ERR:Z expected 0..12");
         }
       }
       else if (buf[0] == 'B') {

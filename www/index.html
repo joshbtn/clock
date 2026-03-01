@@ -90,6 +90,10 @@
                         <optgroup label="UK">
                             <option value="10">London (GMT/BST)</option>
                         </optgroup>
+                        <optgroup label="No DST (Year-Round Standard Time)">
+                            <option value="11">Arizona (MST)</option>
+                            <option value="12">Hawaii (HST)</option>
+                        </optgroup>
                     </select>
                     <div class="text-center text-xs text-neutral-500 mt-2">Selected: <span id="tzDisplay">UTC</span></div>
                 </div>
@@ -200,7 +204,9 @@
             7:  { name: 'Canada Central', offset: -6, dstRule: 'usa' },
             8:  { name: 'Canada Mountain', offset: -7, dstRule: 'none' },
             9:  { name: 'Canada Pacific', offset: -8, dstRule: 'usa' },
-            10: { name: 'UK London', offset: 0, dstRule: 'uk' }
+            10: { name: 'UK London', offset: 0, dstRule: 'uk' },
+            11: { name: 'Arizona', offset: -7, dstRule: 'none' },
+            12: { name: 'Hawaii', offset: -10, dstRule: 'none' }
         };
 
         // ============= Serial Communication =============
