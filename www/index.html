@@ -71,15 +71,27 @@
 
                 <!-- Timezone Selector -->
                 <div class="p-4 border border-neutral-800 rounded-lg">
-                    <label class="block text-sm mb-2 text-neutral-400">Timezone (for DST)</label>
+                    <label class="block text-sm mb-2 text-neutral-400">Region & Timezone</label>
                     <select id="timezone" class="w-full bg-neutral-800 text-amber-500 border border-neutral-700 rounded-lg p-2 text-sm">
                         <option value="0">UTC (No DST)</option>
-                        <option value="-5">Eastern (EST/EDT)</option>
-                        <option value="-6">Central (CST/CDT)</option>
-                        <option value="-7">Mountain (MST/MDT)</option>
-                        <option value="-8">Pacific (PST/PDT)</option>
+                        <optgroup label="USA">
+                            <option value="1">Eastern (EST/EDT)</option>
+                            <option value="2">Central (CST/CDT)</option>
+                            <option value="3">Mountain (MST/MDT)</option>
+                            <option value="4">Pacific (PST/PDT)</option>
+                        </optgroup>
+                        <optgroup label="Canada">
+                            <option value="5">Atlantic (AST/ADT)</option>
+                            <option value="6">Eastern (EST/EDT)</option>
+                            <option value="7">Central (CST/CDT)</option>
+                            <option value="8">Mountain (no DST)</option>
+                            <option value="9">Pacific (PST/PDT)</option>
+                        </optgroup>
+                        <optgroup label="UK">
+                            <option value="10">London (GMT/BST)</option>
+                        </optgroup>
                     </select>
-                    <div class="text-center text-xs text-neutral-500 mt-2">Offset: <span id="tzDisplay">UTC</span></div>
+                    <div class="text-center text-xs text-neutral-500 mt-2">Selected: <span id="tzDisplay">UTC</span></div>
                 </div>
                 
                 <!-- Brightness Control -->
@@ -116,10 +128,11 @@
 
         <!-- Info Card -->
         <div class="card p-4 rounded-lg text-xs text-neutral-500 space-y-2">
-            <p><strong>Initial Setup:</strong> Click "Initial Setup" once to sync date, time, and load DST rules.</p>
+            <p><strong>Setup:</strong> Select your region, then click "Sync Settings to Device" once.</p>
             <p><strong>Format:</strong> Toggle 12/24-hour display. Your preference is saved on the device.</p>
             <p><strong>Auto-Increment:</strong> After setup, the device advances the date automatically each day.</p>
-            <p><strong>DST:</strong> The device applies US DST rules autonomously—no daily syncs needed.</p>
+            <p><strong>DST:</strong> The device applies DST rules automatically based on your region—no daily syncs needed.</p>
+            <p><strong>Regions:</strong> USA, Canada, and UK fully supported. Easy to add more.</p>
         </div>
     </div>
 
@@ -174,61 +187,21 @@
             controls.classList.add('opacity-50', 'pointer-events-none');
         }
 
-        // ============= DST Table Generator =============
-        function generateDSTRules() {
-            // US DST Rules 2026-2035
-            // 2nd Sunday in March, 1st Sunday in November
-            const rules = [
-                {year: 2026, spring_day: 8, fall_day: 1},   // Mar 8, Nov 1
-                {year: 2027, spring_day: 14, fall_day: 7},  // Mar 14, Nov 7
-                {year: 2028, spring_day: 12, fall_day: 5},  // Mar 12, Nov 5
-                {year: 2029, spring_day: 11, fall_day: 4},  // Mar 11, Nov 4
-                {year: 2030, spring_day: 10, fall_day: 3},  // Mar 10, Nov 3
-                {year: 2031, spring_day: 9, fall_day: 2},   // Mar 9, Nov 2
-                {year: 2032, spring_day: 14, fall_day: 7},  // Mar 14, Nov 7
-                {year: 2033, spring_day: 13, fall_day: 6},  // Mar 13, Nov 6
-                {year: 2034, spring_day: 12, fall_day: 5},  // Mar 12, Nov 5
-                {year: 2035, spring_day: 11, fall_day: 4}   // Mar 11, Nov 4
-            ];
-            return rules;
-        }
-
-        function createDSTBinaryBlob() {
-            const rules = generateDSTRules();
-            const blob = new Uint8Array(40);  // 10 years × 4 bytes
-            
-            for (let i = 0; i < 10; i++) {
-                const rule = rules[i];
-                blob[i * 4 + 0] = i;                      // year_offset
-                blob[i * 4 + 1] = rule.spring_day;        // spring_day
-                blob[i * 4 + 2] = rule.fall_day;          // fall_day
-                blob[i * 4 + 3] = 0;                      // reserved
-            }
-            
-            return blob;
-        }
-
-        function isDSTActive(date) {
-            const month = date.getMonth() + 1;  // 1-12
-            const dayOfMonth = date.getDate();
-            const year = date.getFullYear();
-            
-            const rules = generateDSTRules();
-            const rule = rules.find(r => r.year === year);
-            
-            if (!rule) return false;
-            
-            // March: DST if day >= spring_day
-            // April-October: DST active
-            // November: DST if day < fall_day
-            // Dec-Feb: not DST
-            
-            if (month > 3 && month < 11) return true;
-            if (month === 3 && dayOfMonth >= rule.spring_day) return true;
-            if (month === 11 && dayOfMonth < rule.fall_day) return true;
-            
-            return false;
-        }
+        // ============= Timezone Configuration =============
+        // Client-side reference only; Arduino has its own DST algorithms
+        const timezoneConfig = {
+            0:  { name: 'UTC', offset: 0, dstRule: 'none' },
+            1:  { name: 'USA Eastern', offset: -5, dstRule: 'usa' },
+            2:  { name: 'USA Central', offset: -6, dstRule: 'usa' },
+            3:  { name: 'USA Mountain', offset: -7, dstRule: 'usa' },
+            4:  { name: 'USA Pacific', offset: -8, dstRule: 'usa' },
+            5:  { name: 'Canada Atlantic', offset: -3, dstRule: 'usa' },
+            6:  { name: 'Canada Eastern', offset: -5, dstRule: 'usa' },
+            7:  { name: 'Canada Central', offset: -6, dstRule: 'usa' },
+            8:  { name: 'Canada Mountain', offset: -7, dstRule: 'none' },
+            9:  { name: 'Canada Pacific', offset: -8, dstRule: 'usa' },
+            10: { name: 'UK London', offset: 0, dstRule: 'uk' }
+        };
 
         // ============= Serial Communication =============
         function handleArduinoLine(line) {
@@ -310,12 +283,8 @@
                     await cleanupSerialConnection();
                 }
 
-                const existingPorts = await navigator.serial.getPorts();
-                if (existingPorts.length > 0) {
-                    port = existingPorts[0];
-                } else {
-                    port = await navigator.serial.requestPort();
-                }
+                // Always prompt user to select port (don't assume existing ports)
+                port = await navigator.serial.requestPort();
 
                 await port.open({ baudRate: 9600 });
                 writer = port.writable.getWriter();
@@ -388,7 +357,7 @@
 
                 const format = format12hToggle.checked ? 1 : 0;
                 const brightness = parseInt(brightnessSlider.value);
-                const timezone = parseInt(timezoneSelect.value);
+                const timezoneId = parseInt(timezoneSelect.value);
                 const now = new Date();
                 const h = now.getHours();
                 const m = now.getMinutes();
@@ -398,6 +367,7 @@
                 const year = now.getFullYear();
 
                 // Send all settings in sequence
+                // Note: Z command now takes timezone ID (0-10) instead of offset
                 await sendCommand(`D${month},${day},${year}\n`);
                 await new Promise(r => setTimeout(r, 50));
 
@@ -407,7 +377,7 @@
                 await sendCommand(`F${format}\n`);
                 await new Promise(r => setTimeout(r, 50));
 
-                await sendCommand(`Z${timezone}\n`);
+                await sendCommand(`Z${timezoneId}\n`);
                 await new Promise(r => setTimeout(r, 50));
 
                 await sendCommand(`B${brightness}\n`);
@@ -415,7 +385,8 @@
 
                 await sendCommand('QF\n');
 
-                statusDiv.innerText = `Status: Settings synced! ${month}/${day}/${year} ${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+                const tzName = timezoneConfig[timezoneId]?.name || 'Unknown';
+                statusDiv.innerText = `Status: Synced to ${tzName}! ${month}/${day}/${year} ${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
                 statusDiv.classList.remove('text-red-500');
                 statusDiv.classList.add('text-green-500');
 
@@ -433,8 +404,8 @@
         function updateTimezoneDisplay() {
             const tz = localStorage.getItem('timezone') || '0';
             timezoneSelect.value = tz;
-            const option = timezoneSelect.options[timezoneSelect.selectedIndex];
-            tzDisplay.innerText = option.text;
+            const tzId = parseInt(tz);
+            tzDisplay.innerText = timezoneConfig[tzId]?.name || 'Unknown';
         }
 
         function restoreSavedPreferences() {
@@ -449,9 +420,12 @@
             
             updateTimezoneDisplay();
             
-            // Update DST display
+            // Update DST display based on user's current system timezone
+            // (Device will use its own algorithm when synced)
             const now = new Date();
-            dstDisplay.innerText = isDSTActive(now) ? 'Active' : 'Standard';
+            const tzId = parseInt(localStorage.getItem('timezone') || '0');
+            const config = timezoneConfig[tzId];
+            dstDisplay.innerText = config ? config.dstRule.toUpperCase() : 'NONE';
         }
 
         // Load saved preferences on page load

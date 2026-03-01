@@ -6,37 +6,157 @@
 #define CLK_PIN 3
 #define DIO_PIN 4
 
-// EEPROM Address Map
+// EEPROM Address Map (simplified, no DST tables)
 #define ADDR_BRIGHTNESS   0x00  // 1 byte, 0-7
 #define ADDR_FORMAT_12H   0x01  // 1 byte, 0=24h, 1=12h
-#define ADDR_TZ_OFFSET    0x02  // 1 byte, stored as value+12 (range: -12 to +14, stored 0-26)
-#define ADDR_DST_ENABLED  0x03  // 1 byte, 0=off, 1=on
-#define ADDR_DST_CHECKSUM 0x05  // 1 byte
-#define ADDR_DST_TABLE    0x10  // 40 bytes (10 years × 4 bytes/year)
-#define DST_TABLE_SIZE    40
+#define ADDR_TZ_ID        0x02  // 1 byte, timezone ID (0-11)
 
 TM1637Display display(CLK_PIN, DIO_PIN);
 RTC_DS3231 rtc;
 
-// DST transition data: [year_offset, spring_day, fall_day, reserved]
-// Example: {0, 14, 1, 0} means year 2026, spring=Mar 14, fall=Nov 1
-struct DSTYear {
-  uint8_t year_offset;  // 0-9 (2026-2035)
-  uint8_t spring_day;   // 1-31
-  uint8_t fall_day;     // 1-31
-  uint8_t reserved;     // padding
+// Timezone definitions with DST rules encoded in ID
+struct Timezone {
+  uint8_t id;
+  int8_t utc_offset_hours;
+  const char* name;
+  uint8_t dst_rule;  // 0=None, 1=USA/Canada, 2=UK/EU
 };
+
+const Timezone timezones[] = {
+  {0,   0, "UTC",                 0},  // No DST
+  {1,  -5, "USA Eastern",         1},  // EST/EDT
+  {2,  -6, "USA Central",         1},  // CST/CDT
+  {3,  -7, "USA Mountain",        1},  // MST/MDT
+  {4,  -8, "USA Pacific",         1},  // PST/PDT
+  {5,  -3, "Canada Atlantic",     1},  // AST/ADT (same rule as USA)
+  {6,  -5, "Canada Eastern",      1},  // EST/EDT
+  {7,  -6, "Canada Central",      1},  // CST/CDT
+  {8,  -7, "Canada Mountain",     0},  // No DST
+  {9,  -8, "Canada Pacific",      1},  // PST/PDT
+  {10,  0, "UK London",           2},  // GMT/BST
+};
+const uint8_t NUM_TIMEZONES = sizeof(timezones) / sizeof(timezones[0]);
 
 // Runtime state
 DateTime lastDateCheck;
 bool dstActive = false;
-uint8_t tzOffset = 12; // Default 0 (stored as 0+12=12)
+uint8_t tzId = 0; // Default UTC
 
 // Helper function: convert 24-hour (0-23) to 12-hour (1-12)
 uint8_t format12Hour(uint8_t hour24) {
   if (hour24 == 0) return 12;  // Midnight
   if (hour24 > 12) return hour24 - 12;  // PM
   return hour24;  // 1-12 (AM)
+}
+
+// Calculate day of week (0=Sunday, 1=Monday, ..., 6=Saturday)
+// Uses Zeller's congruence algorithm
+uint8_t getDayOfWeek(uint16_t year, uint8_t month, uint8_t day) {
+  if (month < 3) {
+    month += 12;
+    year--;
+  }
+  uint16_t q = day;
+  uint16_t m = month;
+  uint16_t k = year % 100;
+  uint16_t j = year / 100;
+  uint16_t h = (q + ((13 * (m + 1)) / 5) + k + (k / 4) + (j / 4) - (2 * j)) % 7;
+  // Zeller returns: 0=Sat, 1=Sun, 2=Mon, ...
+  // Convert to: 0=Sun, 1=Mon, ..., 6=Sat
+  return (h + 5) % 7;
+}
+
+// Get Nth Sunday of a month (n=1 for first, n=-1 for last)
+uint8_t getNthSunday(uint16_t year, uint8_t month, int8_t n) {
+  uint8_t daysInMonth[] = {0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+  
+  // Check for leap year
+  if ((year % 4 == 0 && year % 100 != 0) || (year % 400 == 0)) {
+    daysInMonth[2] = 29;
+  }
+  
+  if (n > 0) {
+    // Find the Nth Sunday: first check day 1, then add offset
+    uint8_t dow = getDayOfWeek(year, month, 1);
+    uint8_t firstSunday = 1 + ((7 - dow) % 7);
+    return firstSunday + ((n - 1) * 7);
+  } else if (n == -1) {
+    // Find last Sunday
+    uint8_t lastDay = daysInMonth[month];
+    uint8_t dow = getDayOfWeek(year, month, lastDay);
+    return lastDay - dow;
+  }
+  
+  return 1;
+}
+
+// DST for USA/Canada: 2nd Sunday in March to 1st Sunday in November
+bool isDSTActive_USA_Canada(uint16_t year, uint8_t month, uint8_t day) {
+  // March: DST from 2nd Sunday onward
+  if (month == 3) {
+    uint8_t secondSunday = getNthSunday(year, 3, 2);
+    return day >= secondSunday;
+  }
+  
+  // April-October: DST active
+  if (month > 3 && month < 11) {
+    return true;
+  }
+  
+  // November: DST until 1st Sunday (not including 1st Sunday)
+  if (month == 11) {
+    uint8_t firstSunday = getNthSunday(year, 11, 1);
+    return day < firstSunday;
+  }
+  
+  // December-February: standard time
+  return false;
+}
+
+// DST for UK/EU: Last Sunday in March to Last Sunday in October
+bool isDSTActive_UK(uint16_t year, uint8_t month, uint8_t day) {
+  // March: DST from last Sunday onward
+  if (month == 3) {
+    uint8_t lastSunday = getNthSunday(year, 3, -1);
+    return day >= lastSunday;
+  }
+  
+  // April-September: DST active
+  if (month > 3 && month < 10) {
+    return true;
+  }
+  
+  // October: DST until last Sunday (not including last Sunday)
+  if (month == 10) {
+    uint8_t lastSunday = getNthSunday(year, 10, -1);
+    return day < lastSunday;
+  }
+  
+  // November-February: standard time
+  return false;
+}
+
+// Main DST check: dispatches to the appropriate algorithm based on timezone ID
+void checkAndApplyDST() {
+  DateTime now = rtc.now();
+  
+  // Get the DST rule type for the current timezone
+  uint8_t dstRule = 0;
+  for (uint8_t i = 0; i < NUM_TIMEZONES; i++) {
+    if (timezones[i].id == tzId) {
+      dstRule = timezones[i].dst_rule;
+      break;
+    }
+  }
+  
+  // Apply the appropriate DST algorithm
+  if (dstRule == 1) {
+    dstActive = isDSTActive_USA_Canada(now.year(), now.month(), now.day());
+  } else if (dstRule == 2) {
+    dstActive = isDSTActive_UK(now.year(), now.month(), now.day());
+  } else {
+    dstActive = false;
+  }
 }
 
 void updateDisplay() {
@@ -59,37 +179,7 @@ void updateDisplay() {
   display.showNumberDecEx(time, 0b01000000, format != 1); // Leading zero in 24-hour mode only
 }
 
-// Check if today is a DST transition date and update dstActive flag
-void checkAndApplyDST() {
-  DateTime now = rtc.now();
-  
-  // Only check if DST is enabled
-  if (EEPROM.read(ADDR_DST_ENABLED) != 1) {
-    dstActive = false;
-    return;
-  }
-  
-  // Find current year's DST transitions from EEPROM table
-  uint8_t year_offset = now.year() - 2026;
-  if (year_offset < 0 || year_offset >= 10) {
-    // Outside supported range, disable DST
-    dstActive = false;
-    return;
-  }
-  
-  // Read DST entry for this year (4 bytes per year)
-  uint8_t spring_day, fall_day;
-  EEPROM.get(ADDR_DST_TABLE + (year_offset * 4) + 1, spring_day);
-  EEPROM.get(ADDR_DST_TABLE + (year_offset * 4) + 2, fall_day);
-  
-  // Spring forward: March spring_day → DST active
-  // Fall back: November fall_day → DST inactive
-  
-  bool inSpring = (now.month() > 3) || (now.month() == 3 && now.day() >= spring_day);
-  bool beforeFall = (now.month() < 11) || (now.month() == 11 && now.day() < fall_day);
-  
-  dstActive = inSpring && beforeFall;
-}
+
 
 // Auto-increment date if 24 hours have passed
 static unsigned long lastMillis = 0;
@@ -130,40 +220,11 @@ void autoIncrementDate() {
   }
 }
 
-// Parse incoming DST table from binary format
-void parseDSTTable(uint8_t* buffer, uint8_t len) {
-  // Expected format: 10 entries × 4 bytes = 40 bytes exactly
-  if (len != 40) {
-    Serial.println("ERR:DST table must be exactly 40 bytes");
-    return;
-  }
-  
-  // Calculate simple checksum (XOR of all bytes)
-  uint8_t checksum = 0;
-  for (uint8_t i = 0; i < len; i++) {
-    checksum ^= buffer[i];
-  }
-  
-  // Write table to EEPROM
-  for (uint8_t i = 0; i < len; i++) {
-    EEPROM.update(ADDR_DST_TABLE + i, buffer[i]);
-  }
-  
-  // Write checksum
-  EEPROM.update(ADDR_DST_CHECKSUM, checksum);
-  
-  // Re-evaluate DST status
-  checkAndApplyDST();
-  
-  Serial.print("OK:LOAD");
-  Serial.println(checksum);
-}
 
 void handleSerial() {
   // Read full line into buffer
   static char buf[64];
   static uint8_t pos = 0;
-  static uint8_t binaryBuffer[64];  // For LOAD command
 
   while (Serial.available()) {
     char c = Serial.read();
@@ -243,16 +304,30 @@ void handleSerial() {
         }
       }
       else if (buf[0] == 'Z') {
-        // Z<offset> (-12 to +14)
+        // Z<tz_id> (0-11)
+        // 0=UTC, 1=USA_Eastern, 2=USA_Central, 3=USA_Mountain, 4=USA_Pacific,
+        // 5=Canada_Atlantic, 6=Canada_Eastern, 7=Canada_Central, 8=Canada_Mountain, 9=Canada_Pacific, 10=UK_London
         int z = atoi(buf + 1);
-        if (z >= -12 && z <= 14) {
-          // Store as value+12 to keep it as uint8 (0-26)
-          EEPROM.update(ADDR_TZ_OFFSET, z + 12);
-          tzOffset = z + 12;
+        if (z >= 0 && z < NUM_TIMEZONES) {
+          EEPROM.update(ADDR_TZ_ID, z);
+          tzId = z;
+          checkAndApplyDST();
+          
+          // Find the timezone name
+          const char* tzName = "Unknown";
+          for (uint8_t i = 0; i < NUM_TIMEZONES; i++) {
+            if (timezones[i].id == z) {
+              tzName = timezones[i].name;
+              break;
+            }
+          }
+          
           Serial.print("OK:Z");
           Serial.println(z);
+          Serial.print("DBG:TZ ");
+          Serial.println(tzName);
         } else {
-          Serial.println("ERR:Z expected -12..14");
+          Serial.println("ERR:Z expected 0..10");
         }
       }
       else if (buf[0] == 'B') {
@@ -267,29 +342,6 @@ void handleSerial() {
         } else {
           Serial.println("ERR:B expected 0..7");
         }
-      }
-      else if (buf[0] == 'L' && buf[1] == 'O' && buf[2] == 'A' && buf[3] == 'D') {
-        // LOAD<binary_data>
-        // Format: L<length_byte><40_bytes_of_DST_data>
-        // For simplicity, we expect exactly 40 bytes after "LOAD:"
-        if (cmdLen >= 45) {  // "LOAD" (4) + ":" (1) + 40 bytes = 45
-          // Extract 40 bytes starting after "LOAD:"
-          uint8_t i = 0;
-          char* ptr = buf + 5;  // skip "LOAD:"
-          for (i = 0; i < 40 && *ptr; i++) {
-            binaryBuffer[i] = (uint8_t)(*ptr);
-            ptr++;
-          }
-          if (i == 40) {
-            parseDSTTable(binaryBuffer, 40);
-          } else {
-            Serial.println("ERR:LOAD invalid payload");
-          }
-        } else {
-          Serial.println("ERR:LOAD too short");
-        }
-        // Note: In practice, binary upload would use Web Serial's writableStreamDefaultWriter
-        // and send raw bytes. This is a simplified ASCII fallback.
       }
       else {
         Serial.print("ERR:UNKNOWN ");
@@ -318,17 +370,16 @@ void setup() {
   if (brightness > 7) brightness = 5;
   display.setBrightness(brightness);
   
-  // Load timezone offset
-  uint8_t tzByte = EEPROM.read(ADDR_TZ_OFFSET);
-  if (tzByte == 0 || tzByte > 26) {
-    tzOffset = 12;  // Default UTC+0
+  // Load timezone ID
+  uint8_t tzByte = EEPROM.read(ADDR_TZ_ID);
+  if (tzByte >= NUM_TIMEZONES) {
+    tzId = 0;  // Default UTC
   } else {
-    tzOffset = tzByte;
+    tzId = tzByte;
   }
   
   // Initialize date checking for auto-increment
   lastDateCheck = rtc.now();
-  lastMillis = millis();
   
   // Check initial DST status
   checkAndApplyDST();
