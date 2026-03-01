@@ -24,6 +24,9 @@ Timezone myTZ(usEDT, usEST);
 
 volatile bool wakeUp = true;
 
+// Forward declarations
+void handleSerial();
+
 void setup() {
   Serial.begin(9600);
   Wire.begin();
