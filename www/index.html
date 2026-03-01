@@ -120,6 +120,56 @@
                     </div>
                     <div class="text-center text-xs text-neutral-400 mt-2">Level: <span id="brightnessValue">5</span></div>
                 </div>
+
+                <!-- Scheduled Brightness Dimming -->
+                <div class="p-4 border border-amber-800 rounded-lg">
+                    <div class="flex items-center justify-between mb-3">
+                        <label class="block text-sm text-neutral-400">Scheduled Dimming</label>
+                        <div class="flex items-center gap-2">
+                            <span class="text-xs text-neutral-500">Off</span>
+                            <input type="checkbox" id="scheduleEnabled" class="toggle-input">
+                            <span class="text-xs text-neutral-500">On</span>
+                        </div>
+                    </div>
+                    
+                    <div class="grid grid-cols-2 gap-3">
+                        <!-- Dim/Night Settings -->
+                        <div class="p-3 bg-neutral-900 rounded border border-neutral-800">
+                            <div class="text-xs text-neutral-500 mb-2 font-semibold">Night (Dim)</div>
+                            <div class="space-y-2">
+                                <div>
+                                    <label class="text-xs text-neutral-500">Time</label>
+                                    <input type="time" id="dimTime" value="22:00" class="w-full bg-neutral-800 text-amber-500 border border-neutral-700 rounded px-2 py-1 text-xs">
+                                </div>
+                                <div>
+                                    <label class="text-xs text-neutral-500">Brightness</label>
+                                    <input type="range" id="dimBrightness" min="0" max="7" value="1" class="w-full h-1 bg-neutral-700 rounded appearance-none cursor-pointer accent-blue-500">
+                                    <div class="text-center text-xs text-neutral-400 mt-1"><span id="dimBrightnessValue">1</span></div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Bright/Day Settings -->
+                        <div class="p-3 bg-neutral-900 rounded border border-neutral-800">
+                            <div class="text-xs text-neutral-500 mb-2 font-semibold">Day (Bright)</div>
+                            <div class="space-y-2">
+                                <div>
+                                    <label class="text-xs text-neutral-500">Time</label>
+                                    <input type="time" id="brightTime" value="07:00" class="w-full bg-neutral-800 text-amber-500 border border-neutral-700 rounded px-2 py-1 text-xs">
+                                </div>
+                                <div>
+                                    <label class="text-xs text-neutral-500">Brightness</label>
+                                    <input type="range" id="brightBrightness" min="0" max="7" value="5" class="w-full h-1 bg-neutral-700 rounded appearance-none cursor-pointer accent-amber-500">
+                                    <div class="text-center text-xs text-neutral-400 mt-1"><span id="brightBrightnessValue">5</span></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="text-xs text-neutral-500 mt-3 text-center">
+                        Status: <span id="scheduleStatus" class="text-amber-400">Not synced</span>
+                    </div>
+                </div>
                 
                 <div class="p-2 border border-neutral-800 rounded-lg text-xs text-neutral-400">
                     Serial: <span id="serialLog" class="text-neutral-300">--</span>
@@ -136,6 +186,7 @@
         <div class="card p-4 rounded-lg text-xs text-neutral-500 space-y-2">
             <p><strong>Setup:</strong> Select your region, then click "Sync Settings to Device" once.</p>
             <p><strong>Format:</strong> Toggle 12/24-hour display. Your preference is saved on the device.</p>
+            <p><strong>Scheduled Dimming:</strong> Set dim (night) and bright (day) times with separate brightness levels. Schedule automatically applies based on time.</p>
             <p><strong>Auto-Increment:</strong> After setup, the device advances the date automatically each day.</p>
             <p><strong>DST:</strong> The device applies DST rules automatically based on your region—no daily syncs needed.</p>
             <p><strong>Regions:</strong> USA, Canada, and UK fully supported. Easy to add more.</p>
@@ -164,6 +215,16 @@
         const brightnessValue = document.getElementById('brightnessValue');
         const serialLog = document.getElementById('serialLog');
         const syncSettingsBtn = document.getElementById('syncSettings');
+
+        // Schedule elements
+        const scheduleEnabledToggle = document.getElementById('scheduleEnabled');
+        const dimTimeInput = document.getElementById('dimTime');
+        const dimBrightnessSlider = document.getElementById('dimBrightness');
+        const dimBrightnessValue = document.getElementById('dimBrightnessValue');
+        const brightTimeInput = document.getElementById('brightTime');
+        const brightBrightnessSlider = document.getElementById('brightBrightness');
+        const brightBrightnessValue = document.getElementById('brightBrightnessValue');
+        const scheduleStatus = document.getElementById('scheduleStatus');
 
         async function cleanupSerialConnection() {
             try {
@@ -258,6 +319,47 @@
                 statusDiv.classList.remove('text-red-500');
                 statusDiv.classList.add('text-green-500');
             }
+
+            // Handle scheduled brightness query response (QS)
+            if (line.startsWith('OK:QS')) {
+                // Format: OK:QS enabled=1,dim=22:00:1,bright=07:00:5
+                const parts = line.slice(6).trim().split(',');
+                const enabledMatch = parts[0].match(/enabled=(\d)/);
+                const dimMatch = parts[1].match(/dim=(\d{2}):(\d{2}):(\d)/);
+                const brightMatch = parts[2].match(/bright=(\d{2}):(\d{2}):(\d)/);
+                
+                if (enabledMatch && dimMatch && brightMatch) {
+                    isUpdatingFromDevice = true;
+                    
+                    const enabled = enabledMatch[1] === '1';
+                    scheduleEnabledToggle.checked = enabled;
+                    
+                    dimTimeInput.value = `${dimMatch[1]}:${dimMatch[2]}`;
+                    dimBrightnessSlider.value = dimMatch[3];
+                    dimBrightnessValue.innerText = dimMatch[3];
+                    
+                    brightTimeInput.value = `${brightMatch[1]}:${brightMatch[2]}`;
+                    brightBrightnessSlider.value = brightMatch[3];
+                    brightBrightnessValue.innerText = brightMatch[3];
+                    
+                    scheduleStatus.innerText = enabled ? 'Enabled ✓' : 'Disabled';
+                    scheduleStatus.classList.toggle('text-green-400', enabled);
+                    scheduleStatus.classList.toggle('text-neutral-500', !enabled);
+                    
+                    isUpdatingFromDevice = false;
+                    statusDiv.innerText = `Status: Schedule loaded from device`;
+                    statusDiv.classList.add('text-green-500');
+                }
+                return;
+            }
+
+            // Handle schedule command acknowledgments
+            if (line.startsWith('OK:S') || line.startsWith('OK:N') || line.startsWith('OK:Y')) {
+                scheduleStatus.innerText = 'Synced ✓';
+                scheduleStatus.classList.add('text-green-400');
+                scheduleStatus.classList.remove('text-neutral-500');
+                return;
+            }
         }
 
         async function readLoop() {
@@ -340,6 +442,8 @@
                 // Update timezone display
                 updateTimezoneDisplay();
                 await sendCommand('QF\n');
+                await new Promise(r => setTimeout(r, 50));
+                await sendCommand('QS\n');
 
             } catch (err) {
                 statusDiv.innerText = "Error: " + err.message;
@@ -384,6 +488,71 @@
             brightnessValue.innerText = e.target.value;
         });
 
+        // Schedule event listeners
+        scheduleEnabledToggle.addEventListener('change', async (e) => {
+            if (isUpdatingFromDevice || !isConnected) return;
+            try {
+                const enabled = e.target.checked ? 1 : 0;
+                await sendCommand(`S${enabled}\n`);
+                scheduleStatus.innerText = 'Updating...';
+            } catch (err) {
+                console.error('Schedule enable error:', err);
+            }
+        });
+
+        dimBrightnessSlider.addEventListener('input', (e) => {
+            dimBrightnessValue.innerText = e.target.value;
+        });
+
+        brightBrightnessSlider.addEventListener('input', (e) => {
+            brightBrightnessValue.innerText = e.target.value;
+        });
+
+        dimTimeInput.addEventListener('change', async (e) => {
+            if (isUpdatingFromDevice || !isConnected) return;
+            await syncScheduleSettings();
+        });
+
+        dimBrightnessSlider.addEventListener('change', async (e) => {
+            if (isUpdatingFromDevice || !isConnected) return;
+            await syncScheduleSettings();
+        });
+
+        brightTimeInput.addEventListener('change', async (e) => {
+            if (isUpdatingFromDevice || !isConnected) return;
+            await syncScheduleSettings();
+        });
+
+        brightBrightnessSlider.addEventListener('change', async (e) => {
+            if (isUpdatingFromDevice || !isConnected) return;
+            await syncScheduleSettings();
+        });
+
+        async function syncScheduleSettings() {
+            try {
+                scheduleStatus.innerText = 'Syncing...';
+                
+                // Parse dim time
+                const [dimH, dimM] = dimTimeInput.value.split(':').map(v => parseInt(v));
+                const dimB = parseInt(dimBrightnessSlider.value);
+                
+                // Parse bright time
+                const [brightH, brightM] = brightTimeInput.value.split(':').map(v => parseInt(v));
+                const brightB = parseInt(brightBrightnessSlider.value);
+                
+                // Send commands
+                await sendCommand(`N${dimH},${dimM},${dimB}\n`);
+                await new Promise(r => setTimeout(r, 50));
+                await sendCommand(`Y${brightH},${brightM},${brightB}\n`);
+                
+            } catch (err) {
+                console.error('Schedule sync error:', err);
+                scheduleStatus.innerText = 'Sync failed';
+                scheduleStatus.classList.remove('text-green-400');
+                scheduleStatus.classList.add('text-red-400');
+            }
+        }
+
         syncSettingsBtn.addEventListener('click', async () => {
             try {
                 syncSettingsBtn.disabled = true;
@@ -419,7 +588,17 @@
                 await sendCommand(`B${brightness}\n`);
                 await new Promise(r => setTimeout(r, 50));
 
+                // Send schedule settings
+                const scheduleEnabled = scheduleEnabledToggle.checked ? 1 : 0;
+                await sendCommand(`S${scheduleEnabled}\n`);
+                await new Promise(r => setTimeout(r, 50));
+                
+                await syncScheduleSettings();
+                await new Promise(r => setTimeout(r, 50));
+
                 await sendCommand('QF\n');
+                await new Promise(r => setTimeout(r, 50));
+                await sendCommand('QS\n');
 
                 const tzName = timezoneConfig[timezoneId]?.name || 'Unknown';
                 statusDiv.innerText = `Status: Synced to ${tzName}! ${month}/${day}/${year} ${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;

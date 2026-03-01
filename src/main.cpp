@@ -12,6 +12,14 @@
 #define ADDR_FORMAT_12H        0x01  // 1 byte, 0=24h, 1=12h
 #define ADDR_TZ_ID             0x02  // 1 byte, timezone ID (0-20)
 #define ADDR_DST_RULES_VERSION 0x03  // 1 byte, version of DST rules
+// Scheduled Brightness Dimming
+#define ADDR_SCHEDULE_ENABLED  0x04  // 1 byte, 0=off, 1=on
+#define ADDR_DIM_HOUR          0x05  // 1 byte, 0-23
+#define ADDR_DIM_MINUTE        0x06  // 1 byte, 0-59
+#define ADDR_BRIGHT_HOUR       0x07  // 1 byte, 0-23
+#define ADDR_BRIGHT_MINUTE     0x08  // 1 byte, 0-59
+#define ADDR_DIM_BRIGHTNESS    0x09  // 1 byte, 0-7 (brightness during dim period)
+#define ADDR_BRIGHT_BRIGHTNESS 0x0A  // 1 byte, 0-7 (brightness during bright period)
 
 // DST Rules Version for firmware compatibility checks
 #define DST_RULES_VERSION 2
@@ -65,6 +73,16 @@ DateTime lastDateCheck;
 bool dstActive = false;
 uint8_t tzId = 0; // Default UTC
 // (DateTime functions are now in datetime.h / datetime.cpp)
+
+// Scheduled Brightness State
+bool scheduleEnabled = false;
+uint8_t dimHour = 22;
+uint8_t dimMinute = 0;
+uint8_t brightHour = 7;
+uint8_t brightMinute = 0;
+uint8_t dimBrightness = 1;
+uint8_t brightBrightness = 5;
+bool currentlyDim = false;
 
 // Main DST check: dispatches to the appropriate algorithm based on timezone ID
 void checkAndApplyDST() {
@@ -186,6 +204,39 @@ void autoIncrementDate() {
   }
 }
 
+// Check if current time is within dim period (handles midnight wrap-around)
+bool isInDimPeriod(uint8_t currentHour, uint8_t currentMinute) {
+  uint16_t currentMinutes = currentHour * 60 + currentMinute;
+  uint16_t dimMinutes = dimHour * 60 + dimMinute;
+  uint16_t brightMinutes = brightHour * 60 + brightMinute;
+  
+  if (dimMinutes < brightMinutes) {
+    // Normal case: dim period doesn't cross midnight (e.g., 22:00-07:00 next day)
+    // Current time is in dim period if it's >= dim OR < bright
+    return currentMinutes >= dimMinutes || currentMinutes < brightMinutes;
+  } else {
+    // Dim period is during the day (e.g., 08:00-18:00)
+    return currentMinutes >= dimMinutes && currentMinutes < brightMinutes;
+  }
+}
+
+// Check schedule and apply brightness if needed
+void checkScheduledBrightness() {
+  if (!scheduleEnabled) {
+    return;
+  }
+  
+  DateTime now = rtc.now();
+  bool shouldBeDim = isInDimPeriod(now.hour(), now.minute());
+  
+  // Only update if state changed (to avoid unnecessary writes)
+  if (shouldBeDim != currentlyDim) {
+    currentlyDim = shouldBeDim;
+    uint8_t newBrightness = shouldBeDim ? dimBrightness : brightBrightness;
+    display.setBrightness(newBrightness);
+    updateDisplay();
+  }
+}
 
 void handleSerial() {
   // Read full line into buffer
@@ -316,6 +367,79 @@ void handleSerial() {
           Serial.println("ERR:B expected 0..7");
         }
       }
+      else if (buf[0] == 'S' && buf[1] != '\0' && buf[2] == '\0') {
+        // S<0|1> - Enable (1) or disable (0) scheduled dimming
+        int s = atoi(buf + 1);
+        if (s == 0 || s == 1) {
+          scheduleEnabled = (s == 1);
+          EEPROM.update(ADDR_SCHEDULE_ENABLED, s);
+          Serial.print("OK:S");
+          Serial.println(s);
+        } else {
+          Serial.println("ERR:S expected 0 or 1");
+        }
+      }
+      else if (buf[0] == 'N') {
+        // N<h>,<m>,<b> - Set night (dim) time and brightness
+        int h, m, b;
+        if (sscanf(buf + 1, "%d,%d,%d", &h, &m, &b) == 3 &&
+            h >= 0 && h <= 23 && m >= 0 && m <= 59 && b >= 0 && b <= 7) {
+          dimHour = h;
+          dimMinute = m;
+          dimBrightness = b;
+          EEPROM.update(ADDR_DIM_HOUR, h);
+          EEPROM.update(ADDR_DIM_MINUTE, m);
+          EEPROM.update(ADDR_DIM_BRIGHTNESS, b);
+          currentlyDim = false;  // Force re-check on next cycle
+          Serial.print("OK:N");
+          Serial.print(h); Serial.print(":");
+          Serial.print(m); Serial.print(":");
+          Serial.println(b);
+        } else {
+          Serial.println("ERR:N expected h,m,b");
+        }
+      }
+      else if (buf[0] == 'Y') {
+        // Y<h>,<m>,<b> - Set day (bright) time and brightness
+        int h, m, b;
+        if (sscanf(buf + 1, "%d,%d,%d", &h, &m, &b) == 3 &&
+            h >= 0 && h <= 23 && m >= 0 && m <= 59 && b >= 0 && b <= 7) {
+          brightHour = h;
+          brightMinute = m;
+          brightBrightness = b;
+          EEPROM.update(ADDR_BRIGHT_HOUR, h);
+          EEPROM.update(ADDR_BRIGHT_MINUTE, m);
+          EEPROM.update(ADDR_BRIGHT_BRIGHTNESS, b);
+          currentlyDim = false;  // Force re-check on next cycle
+          Serial.print("OK:Y");
+          Serial.print(h); Serial.print(":");
+          Serial.print(m); Serial.print(":");
+          Serial.println(b);
+        } else {
+          Serial.println("ERR:Y expected h,m,b");
+        }
+      }
+      else if (buf[0] == 'Q' && buf[1] == 'S' && buf[2] == '\0') {
+        // QS - Query schedule settings
+        Serial.print("OK:QS enabled=");
+        Serial.print(scheduleEnabled ? 1 : 0);
+        Serial.print(",dim=");
+        if (dimHour < 10) Serial.print("0");
+        Serial.print(dimHour);
+        Serial.print(":");
+        if (dimMinute < 10) Serial.print("0");
+        Serial.print(dimMinute);
+        Serial.print(":");
+        Serial.print(dimBrightness);
+        Serial.print(",bright=");
+        if (brightHour < 10) Serial.print("0");
+        Serial.print(brightHour);
+        Serial.print(":");
+        if (brightMinute < 10) Serial.print("0");
+        Serial.print(brightMinute);
+        Serial.print(":");
+        Serial.println(brightBrightness);
+      }
       else {
         Serial.print("ERR:UNKNOWN ");
         Serial.println(buf);
@@ -378,11 +502,36 @@ void setup() {
     }
   }
 
+  // Load scheduled brightness settings from EEPROM
+  uint8_t schedByte = EEPROM.read(ADDR_SCHEDULE_ENABLED);
+  scheduleEnabled = (schedByte == 1);
+  
+  uint8_t dh = EEPROM.read(ADDR_DIM_HOUR);
+  uint8_t dm = EEPROM.read(ADDR_DIM_MINUTE);
+  uint8_t bh = EEPROM.read(ADDR_BRIGHT_HOUR);
+  uint8_t bm = EEPROM.read(ADDR_BRIGHT_MINUTE);
+  uint8_t db = EEPROM.read(ADDR_DIM_BRIGHTNESS);
+  uint8_t bb = EEPROM.read(ADDR_BRIGHT_BRIGHTNESS);
+  
+  // Validate and use defaults if corrupted
+  dimHour = (dh <= 23) ? dh : 22;
+  dimMinute = (dm <= 59) ? dm : 0;
+  brightHour = (bh <= 23) ? bh : 7;
+  brightMinute = (bm <= 59) ? bm : 0;
+  dimBrightness = (db <= 7) ? db : 1;
+  brightBrightness = (bb <= 7) ? bb : 5;
+  
+  Serial.print("DBG:Schedule enabled=");
+  Serial.println(scheduleEnabled);
+
   updateDisplay();
 }
 
 void loop() {
   handleSerial();
+  
+  // Check and apply scheduled brightness
+  checkScheduledBrightness();
   
   // Auto-increment date every 24 hours
   autoIncrementDate();
