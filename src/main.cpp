@@ -267,17 +267,24 @@ void updateDisplay() {
   
   uint8_t format = EEPROM.read(ADDR_FORMAT_12H);
   int time;
+  uint8_t decimalMask = 0b01000000;  // Middle colon (between digits 1-2)
   
   if (format == 1) {
     // 12-hour format: display as H:MM (no leading zero)
     h = format12Hour(h);
+    
+    // Light the last dot if PM (12:00 and onward)
+    if (now.hour() >= 12) {
+      decimalMask |= 0b00010000;  // Add last dot for PM
+    }
+    
     time = h * 100 + m;
   } else {
     // 24-hour format: display as HH:MM
     time = h * 100 + m;
   }
   
-  display.showNumberDecEx(time, 0b01000000, format != 1); // Leading zero in 24-hour mode only
+  display.showNumberDecEx(time, decimalMask, format != 1); // Leading zero in 24-hour mode only
 }
 
 
@@ -334,7 +341,6 @@ void handleSerial() {
     if (c == '\n' || c == '\r') {
       if (pos == 0) continue;  // skip empty lines
       buf[pos] = '\0';
-      uint8_t cmdLen = pos;
       pos = 0;
 
       Serial.print("DBG:RX ");
