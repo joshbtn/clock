@@ -277,6 +277,28 @@
                 }
             } catch (err) {
                 console.error('Read error:', err);
+                
+                // Handle buffer overrun errors by clearing buffer and restarting
+                if (err.name === 'BufferOverrunError') {
+                    console.warn('Buffer overrun detected - clearing buffer and restarting read loop');
+                    serialRxBuffer = ''; // Clear the buffer
+                    
+                    try {
+                        // Try to recover: cancel current reader and get a new one
+                        await reader.cancel();
+                        reader.releaseLock();
+                        reader = port.readable.getReader();
+                        
+                        // Restart the read loop
+                        readLoop();
+                    } catch (recoveryErr) {
+                        console.error('Failed to recover from buffer overrun:', recoveryErr);
+                        await cleanupSerialConnection();
+                        statusDiv.innerText = "Status: Disconnected (buffer overrun)";
+                        statusDiv.classList.add('text-red-500');
+                        statusDiv.classList.remove('text-green-500');
+                    }
+                }
             }
         }
 
