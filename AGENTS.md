@@ -1,46 +1,46 @@
-# Project Logic: "Agents" and Automated Routines
+# Project Architecture
 
-This project utilizes several automated "agents" or logic blocks to ensure the clock remains accurate and energy-efficient without user intervention.
+Simple, maintainable design. The UI does the thinking, the Arduino just displays what it's told.
 
-## 1. The Sleep/Wake Cycle Agent
+## 1. Main Loop
 
-To maximize the lifespan of the components and minimize power draw, the system follows a strict interrupt-driven cycle.
+The Arduino runs a straightforward loop with no sleep or interrupts:
 
-**Trigger:** The SQW pin on the DS3231 RTC is programmed to pulse at the start of every minute ($1/60 \text{Hz}$).
+1. Check for incoming serial commands.
+2. Read time from DS3231 RTC via I2C.
+3. Display `HH:MM` on the TM1637.
+4. Wait 500ms, repeat.
 
-**Action:**
-- The pulse triggers a Hardware Interrupt on Arduino Pin D2.
-- The Nano wakes from `SLEEP_MODE_PWR_DOWN`.
-- The Nano reads the current UTC time from the RTC via I2C (A4/A5).
-- The display is updated via the TM1637 driver.
-- The Nano immediately re-enters Deep Sleep.
+## 2. Time Sync
 
-## 2. The Timezone & DST Agent
+The browser handles all timezone and DST logic. The Arduino stores **local time** directly.
 
-Because the RTC only tracks raw time, this logic block performs the "Local Time" transformation.
+**Flow:**
+1. User opens the Web Serial dashboard in Chrome.
+2. Browser reads local time via `new Date()`.
+3. Browser sends `T<hour>,<minute>,<second>\n` over serial.
+4. Arduino parses the line and sets the DS3231 RTC.
+5. DS3231's coin cell battery keeps time through power outages.
 
-**Storage:** The Timezone Offset and DST Rules are stored in the EEPROM (Addresses 0x00 and 0x01).
+**Key decision:** No timezone math on the Arduino. The browser already knows the user's local time — sending it directly eliminates an entire class of bugs.
 
-**Calculation:**
-- The Timezone library calculates the transition dates (e.g., "Second Sunday in March") mathematically.
-- If `CurrentDate > DST_Start` and `CurrentDate < DST_End`, the agent applies a $+3600\text{s}$ offset.
+## 3. Brightness Control
 
-**Result:** The clock automatically "springs forward" and "falls back" without being plugged into a computer.
+Brightness (0–7) is stored in EEPROM address `0x00` and persists across reboots.
 
-## 3. The Web Serial Sync Agent
+**Flow:**
+1. Browser sends `B<0-7>\n` over serial.
+2. Arduino writes to EEPROM and updates the TM1637.
+3. On boot, brightness is loaded from EEPROM (default: 5).
 
-This is the bridge between the physical hardware and the digital dashboard.
+## 4. Serial Protocol
 
-**Protocol:** Serial at 9600 Baud via the Nano's USB port.
+Line-buffered at 9600 baud. Commands are a single letter followed by data, terminated with `\n`.
 
-**Command Set:**
-- `T[UnixTimestamp]`: Adjusts the RTC internal clock.
-- `Z[Offset]`: Updates the local timezone stored in EEPROM.
+The Arduino reads characters into a buffer until `\n`, then parses the complete line with `sscanf` / `atoi`. This avoids issues with `Serial.parseInt()` timeouts and partial reads.
 
-**Automation:** The `dashboard.html` interface uses the Browser's `Intl.DateTimeFormat().resolvedOptions().timeZone` to detect the user's location and automatically format the `Z` command before sending.
-
-## 4. Optical Filtering Agent
+## 5. Optical Filtering
 
 **Component:** Dark Smoke Acrylic.
 
-**Logic:** The acrylic acts as a high-pass filter. It blocks the low-intensity reflections of the internal PCBs and wires but allows the high-intensity yellow light from the TM1637 segments to pass through, creating a "Void Display" effect.
+The acrylic blocks low-intensity reflections of internal PCBs and wires but passes the high-intensity yellow LED segments, creating a "floating digits" effect.
