@@ -87,12 +87,24 @@
                             <option value="8">Mountain (no DST)</option>
                             <option value="9">Pacific (PST/PDT)</option>
                         </optgroup>
-                        <optgroup label="UK">
+                        <optgroup label="Europe">
                             <option value="10">London (GMT/BST)</option>
+                            <option value="14">Central European (CET/CEST)</option>
+                            <option value="15">Eastern European (EET/EEST)</option>
+                        </optgroup>
+                        <optgroup label="Australia & New Zealand">
+                            <option value="16">Sydney (AEDT/AEST)</option>
+                            <option value="17">Adelaide (ACDT/ACST)</option>
+                            <option value="18">Perth (no DST)</option>
+                            <option value="19">New Zealand (NZDT/NZST)</option>
+                        </optgroup>
+                        <optgroup label="South America">
+                            <option value="20">Brazil Sao Paulo (BRT/BRST)</option>
                         </optgroup>
                         <optgroup label="No DST (Year-Round Standard Time)">
                             <option value="11">Arizona (MST)</option>
                             <option value="12">Hawaii (HST)</option>
+                            <option value="13">Samoa (WST)</option>
                         </optgroup>
                     </select>
                     <div class="text-center text-xs text-neutral-500 mt-2">Selected: <span id="tzDisplay">UTC</span></div>
@@ -194,7 +206,15 @@
             9:  { name: 'Canada Pacific', offset: -8, dstRule: 'usa' },
             10: { name: 'UK London', offset: 0, dstRule: 'uk' },
             11: { name: 'Arizona', offset: -7, dstRule: 'none' },
-            12: { name: 'Hawaii', offset: -10, dstRule: 'none' }
+            12: { name: 'Hawaii', offset: -10, dstRule: 'none' },
+            13: { name: 'Samoa', offset: -9, dstRule: 'none' },
+            14: { name: 'EU Central', offset: 1, dstRule: 'uk' },
+            15: { name: 'EU Eastern', offset: 2, dstRule: 'uk' },
+            16: { name: 'Australia Sydney', offset: 10, dstRule: 'australia' },
+            17: { name: 'Australia Adelaide', offset: 9, dstRule: 'australia' },
+            18: { name: 'Australia Perth', offset: 8, dstRule: 'none' },
+            19: { name: 'New Zealand', offset: 12, dstRule: 'nz' },
+            20: { name: 'Brazil Sao Paulo', offset: -3, dstRule: 'brazil' }
         };
 
         // ============= Serial Communication =============

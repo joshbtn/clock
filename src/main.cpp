@@ -7,9 +7,13 @@
 #define DIO_PIN 4
 
 // EEPROM Address Map (simplified, no DST tables)
-#define ADDR_BRIGHTNESS   0x00  // 1 byte, 0-7
-#define ADDR_FORMAT_12H   0x01  // 1 byte, 0=24h, 1=12h
-#define ADDR_TZ_ID        0x02  // 1 byte, timezone ID (0-11)
+#define ADDR_BRIGHTNESS        0x00  // 1 byte, 0-7
+#define ADDR_FORMAT_12H        0x01  // 1 byte, 0=24h, 1=12h
+#define ADDR_TZ_ID             0x02  // 1 byte, timezone ID (0-20)
+#define ADDR_DST_RULES_VERSION 0x03  // 1 byte, version of DST rules
+
+// DST Rules Version for firmware compatibility checks
+#define DST_RULES_VERSION 2
 
 TM1637Display display(CLK_PIN, DIO_PIN);
 RTC_DS3231 rtc;
@@ -22,20 +26,36 @@ struct Timezone {
   uint8_t dst_rule;  // 0=None, 1=USA/Canada, 2=UK/EU
 };
 
+// DST Rule Type Definitions
+#define DST_RULE_NONE              0
+#define DST_RULE_USA_CANADA        1
+#define DST_RULE_UK_EU             2
+#define DST_RULE_AUSTRALIA         3
+#define DST_RULE_NEW_ZEALAND       4
+#define DST_RULE_BRAZIL            5
+
 const Timezone timezones[] = {
-  {0,   0, "UTC",                 0},  // No DST
-  {1,  -5, "USA Eastern",         1},  // EST/EDT
-  {2,  -6, "USA Central",         1},  // CST/CDT
-  {3,  -7, "USA Mountain",        1},  // MST/MDT
-  {4,  -8, "USA Pacific",         1},  // PST/PDT
-  {5,  -3, "Canada Atlantic",     1},  // AST/ADT (same rule as USA)
-  {6,  -5, "Canada Eastern",      1},  // EST/EDT
-  {7,  -6, "Canada Central",      1},  // CST/CDT
-  {8,  -7, "Canada Mountain",     0},  // No DST
-  {9,  -8, "Canada Pacific",      1},  // PST/PDT
-  {10,  0, "UK London",           2},  // GMT/BST
-  {11, -7, "Arizona",             0},  // MST year-round, no DST
-  {12,-10, "Hawaii",              0},  // HST year-round, no DST
+  {0,   0, "UTC",                 DST_RULE_NONE},
+  {1,  -5, "USA Eastern",         DST_RULE_USA_CANADA},
+  {2,  -6, "USA Central",         DST_RULE_USA_CANADA},
+  {3,  -7, "USA Mountain",        DST_RULE_USA_CANADA},
+  {4,  -8, "USA Pacific",         DST_RULE_USA_CANADA},
+  {5,  -3, "Canada Atlantic",     DST_RULE_USA_CANADA},
+  {6,  -5, "Canada Eastern",      DST_RULE_USA_CANADA},
+  {7,  -6, "Canada Central",      DST_RULE_USA_CANADA},
+  {8,  -7, "Canada Mountain",     DST_RULE_NONE},
+  {9,  -8, "Canada Pacific",      DST_RULE_USA_CANADA},
+  {10,  0, "UK London",           DST_RULE_UK_EU},
+  {11, -7, "Arizona",             DST_RULE_NONE},
+  {12,-10, "Hawaii",              DST_RULE_NONE},
+  {13, -9, "Samoa",               DST_RULE_NONE},
+  {14,  1, "EU Central",          DST_RULE_UK_EU},
+  {15,  2, "EU Eastern",          DST_RULE_UK_EU},
+  {16,-10, "Australia Sydney",    DST_RULE_AUSTRALIA},
+  {17, -9, "Australia Adelaide",  DST_RULE_AUSTRALIA},
+  {18, -8, "Australia Perth",     DST_RULE_NONE},
+  {19, 12, "New Zealand",         DST_RULE_NEW_ZEALAND},
+  {20, -3, "Brazil Sao Paulo",    DST_RULE_BRAZIL}
 };
 const uint8_t NUM_TIMEZONES = sizeof(timezones) / sizeof(timezones[0]);
 
@@ -138,12 +158,78 @@ bool isDSTActive_UK(uint16_t year, uint8_t month, uint8_t day) {
   return false;
 }
 
+// DST for Australia (Sydney/Melbourne): 1st Sunday in October to 1st Sunday in April
+bool isDSTActive_Australia(uint16_t year, uint8_t month, uint8_t day) {
+  // October: DST from 1st Sunday onward
+  if (month == 10) {
+    uint8_t firstSunday = getNthSunday(year, 10, 1);
+    return day >= firstSunday;
+  }
+  
+  // November-March: DST active
+  if (month > 10 || month < 4) {
+    return true;
+  }
+  
+  // April: DST until 1st Sunday (not including 1st Sunday)
+  if (month == 4) {
+    uint8_t firstSunday = getNthSunday(year, 4, 1);
+    return day < firstSunday;
+  }
+  
+  return false;
+}
+
+// DST for New Zealand: Last Sunday in September to 1st Sunday in April
+bool isDSTActive_NewZealand(uint16_t year, uint8_t month, uint8_t day) {
+  // September: DST from last Sunday onward
+  if (month == 9) {
+    uint8_t lastSunday = getNthSunday(year, 9, -1);
+    return day >= lastSunday;
+  }
+  
+  // October-March: DST active
+  if (month > 9 || month < 4) {
+    return true;
+  }
+  
+  // April: DST until 1st Sunday (not including 1st Sunday)
+  if (month == 4) {
+    uint8_t firstSunday = getNthSunday(year, 4, 1);
+    return day < firstSunday;
+  }
+  
+  return false;
+}
+
+// DST for Brazil: 3rd Sunday in October to 3rd Sunday in February
+bool isDSTActive_Brazil(uint16_t year, uint8_t month, uint8_t day) {
+  // October: DST from 3rd Sunday onward
+  if (month == 10) {
+    uint8_t thirdSunday = getNthSunday(year, 10, 3);
+    return day >= thirdSunday;
+  }
+  
+  // November-January: DST active
+  if (month > 10 && month < 2) {
+    return true;
+  }
+  
+  // February: DST until 3rd Sunday (not including 3rd Sunday)
+  if (month == 2) {
+    uint8_t thirdSunday = getNthSunday(year, 2, 3);
+    return day < thirdSunday;
+  }
+  
+  return false;
+}
+
 // Main DST check: dispatches to the appropriate algorithm based on timezone ID
 void checkAndApplyDST() {
   DateTime now = rtc.now();
   
   // Get the DST rule type for the current timezone
-  uint8_t dstRule = 0;
+  uint8_t dstRule = DST_RULE_NONE;
   for (uint8_t i = 0; i < NUM_TIMEZONES; i++) {
     if (timezones[i].id == tzId) {
       dstRule = timezones[i].dst_rule;
@@ -152,12 +238,25 @@ void checkAndApplyDST() {
   }
   
   // Apply the appropriate DST algorithm
-  if (dstRule == 1) {
-    dstActive = isDSTActive_USA_Canada(now.year(), now.month(), now.day());
-  } else if (dstRule == 2) {
-    dstActive = isDSTActive_UK(now.year(), now.month(), now.day());
-  } else {
-    dstActive = false;
+  switch (dstRule) {
+    case DST_RULE_USA_CANADA:
+      dstActive = isDSTActive_USA_Canada(now.year(), now.month(), now.day());
+      break;
+    case DST_RULE_UK_EU:
+      dstActive = isDSTActive_UK(now.year(), now.month(), now.day());
+      break;
+    case DST_RULE_AUSTRALIA:
+      dstActive = isDSTActive_Australia(now.year(), now.month(), now.day());
+      break;
+    case DST_RULE_NEW_ZEALAND:
+      dstActive = isDSTActive_NewZealand(now.year(), now.month(), now.day());
+      break;
+    case DST_RULE_BRAZIL:
+      dstActive = isDSTActive_Brazil(now.year(), now.month(), now.day());
+      break;
+    default:
+      dstActive = false;
+      break;
   }
 }
 
@@ -306,19 +405,25 @@ void handleSerial() {
         }
       }
       else if (buf[0] == 'Z') {
-        // Z<tz_id> (0-12)
-        // 0=UTC, 1-4=USA, 5-9=Canada, 10=UK, 11=Arizona(no DST), 12=Hawaii(no DST)
+        // Z<tz_id> (0-20)
+        // Timezone ID selector with DST rule dispatch
         int z = atoi(buf + 1);
         if (z >= 0 && z < NUM_TIMEZONES) {
           EEPROM.update(ADDR_TZ_ID, z);
           tzId = z;
+          
+          // Mark DST rules version
+          EEPROM.update(ADDR_DST_RULES_VERSION, DST_RULES_VERSION);
+          
           checkAndApplyDST();
           
-          // Find the timezone name
+          // Find the timezone name and DST rule
           const char* tzName = "Unknown";
+          uint8_t dstRule = DST_RULE_NONE;
           for (uint8_t i = 0; i < NUM_TIMEZONES; i++) {
             if (timezones[i].id == z) {
               tzName = timezones[i].name;
+              dstRule = timezones[i].dst_rule;
               break;
             }
           }
@@ -326,9 +431,12 @@ void handleSerial() {
           Serial.print("OK:Z");
           Serial.println(z);
           Serial.print("DBG:TZ ");
-          Serial.println(tzName);
+          Serial.print(tzName);
+          Serial.print(" rule=");
+          Serial.println(dstRule);
         } else {
-          Serial.println("ERR:Z expected 0..12");
+          Serial.print("ERR:Z expected 0..");
+          Serial.println(NUM_TIMEZONES - 1);
         }
       }
       else if (buf[0] == 'B') {
@@ -365,6 +473,10 @@ void setup() {
   Serial.begin(9600);
   Wire.begin();
   rtc.begin();
+  
+  Serial.println("DBG:Boot");
+  Serial.print("DBG:DST_RULES_VERSION=");
+  Serial.println(DST_RULES_VERSION);
 
   // Load settings from EEPROM
   uint8_t brightness = EEPROM.read(ADDR_BRIGHTNESS);
@@ -379,11 +491,28 @@ void setup() {
     tzId = tzByte;
   }
   
+  // Check DST rules version compatibility
+  uint8_t storedVersion = EEPROM.read(ADDR_DST_RULES_VERSION);
+  if (storedVersion != DST_RULES_VERSION && storedVersion != 0) {
+    Serial.print("DBG:RULE_VERSION_MISMATCH stored=");
+    Serial.print(storedVersion);
+    Serial.print(" current=");
+    Serial.println(DST_RULES_VERSION);
+  }
+  
   // Initialize date checking for auto-increment
   lastDateCheck = rtc.now();
   
   // Check initial DST status
   checkAndApplyDST();
+  
+  Serial.print("DBG:Timezone=");
+  for (uint8_t i = 0; i < NUM_TIMEZONES; i++) {
+    if (timezones[i].id == tzId) {
+      Serial.println(timezones[i].name);
+      break;
+    }
+  }
 
   updateDisplay();
 }
