@@ -21,7 +21,7 @@ uint8_t getDayOfWeek(uint16_t year, uint8_t month, uint8_t day) {
   uint16_t h = (q + ((13 * (m + 1)) / 5) + k + (k / 4) + (j / 4) - (2 * j)) % 7;
   // Zeller returns: 0=Sat, 1=Sun, 2=Mon, ...
   // Convert to: 0=Sun, 1=Mon, ..., 6=Sat
-  return (h + 5) % 7;
+  return (h + 6) % 7;
 }
 
 // Get Nth Sunday of a month (n=1 for first, n=-1 for last)

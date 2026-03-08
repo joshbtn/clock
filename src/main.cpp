@@ -74,6 +74,14 @@ bool dstActive = false;
 uint8_t tzId = 0; // Default UTC
 // (DateTime functions are now in datetime.h / datetime.cpp)
 
+// Helper: Get timezone UTC offset in hours
+int8_t getTimezoneOffset(uint8_t id) {
+  for (uint8_t i = 0; i < NUM_TIMEZONES; i++) {
+    if (timezones[i].id == id) return timezones[i].utc_offset_hours;
+  }
+  return 0;  // Default UTC
+}
+
 // Scheduled Brightness State
 bool scheduleEnabled = false;
 uint8_t dimHour = 22;
@@ -121,8 +129,18 @@ void checkAndApplyDST() {
 }
 
 void updateDisplay() {
-  DateTime now = rtc.now();
-  uint8_t h = now.hour();
+  DateTime now = rtc.now();  // RTC stores UTC
+  
+  // Calculate local time from UTC + timezone offset + DST
+  int8_t offset = getTimezoneOffset(tzId);
+  if (dstActive) offset += 1;
+  int16_t localHour = (int16_t)now.hour() + offset;
+  
+  // Handle day wrap-around
+  if (localHour < 0) localHour += 24;
+  if (localHour >= 24) localHour -= 24;
+  
+  uint8_t h = (uint8_t)localHour;
   uint8_t m = now.minute();
   
   uint8_t format = EEPROM.read(ADDR_FORMAT_12H);
@@ -226,8 +244,15 @@ void checkScheduledBrightness() {
     return;
   }
   
+  // RTC stores UTC, calculate local time for schedule comparison
   DateTime now = rtc.now();
-  bool shouldBeDim = isInDimPeriod(now.hour(), now.minute());
+  int8_t offset = getTimezoneOffset(tzId);
+  if (dstActive) offset += 1;
+  int16_t localHour = (int16_t)now.hour() + offset;
+  if (localHour < 0) localHour += 24;
+  if (localHour >= 24) localHour -= 24;
+  
+  bool shouldBeDim = isInDimPeriod((uint8_t)localHour, now.minute());
   
   // Only update if state changed (to avoid unnecessary writes)
   if (shouldBeDim != currentlyDim) {
@@ -257,12 +282,21 @@ void handleSerial() {
 
       // Parse command from buffer
       if (buf[0] == 'T') {
-        // T<hour>,<minute>,<second>
+        // T<hour>,<minute>,<second> - Browser sends LOCAL time, we store UTC in RTC
         int h, m, s;
         if (sscanf(buf + 1, "%d,%d,%d", &h, &m, &s) == 3 &&
             h >= 0 && h <= 23 && m >= 0 && m <= 59 && s >= 0 && s <= 59) {
+          // Convert local time to UTC
+          int8_t offset = getTimezoneOffset(tzId);
+          if (dstActive) offset += 1;
+          int16_t utcHour = h - offset;
+          
+          // Handle day wrap (we'll keep same date for simplicity)
+          if (utcHour < 0) utcHour += 24;
+          if (utcHour >= 24) utcHour -= 24;
+          
           DateTime now = rtc.now();
-          rtc.adjust(DateTime(now.year(), now.month(), now.day(), h, m, s));
+          rtc.adjust(DateTime(now.year(), now.month(), now.day(), (uint8_t)utcHour, m, s));
           updateDisplay();
           Serial.print("OK:T");
           Serial.print(h); Serial.print(":");
@@ -273,14 +307,14 @@ void handleSerial() {
         }
       }
       else if (buf[0] == 'D') {
-        // D<month>,<day>,<year>
+        // D<month>,<day>,<year> - Update date and recalculate DST
         int m, d, y;
         if (sscanf(buf + 1, "%d,%d,%d", &m, &d, &y) == 3 &&
             m >= 1 && m <= 12 && d >= 1 && d <= 31 && y >= 2026 && y <= 2035) {
           DateTime now = rtc.now();
           rtc.adjust(DateTime(y, m, d, now.hour(), now.minute(), now.second()));
           lastDateCheck = rtc.now();
-          checkAndApplyDST();
+          checkAndApplyDST();  // Recalculate DST status with new date
           updateDisplay();
           Serial.print("OK:D");
           Serial.print(m); Serial.print("/");
@@ -304,13 +338,21 @@ void handleSerial() {
           updateDisplay();
           uint8_t stored = EEPROM.read(ADDR_FORMAT_12H);
           DateTime now = rtc.now();
-          uint8_t shownHour = (stored == 1) ? format12Hour(now.hour()) : now.hour();
+          // Calculate local time for debug output
+          int8_t offset = getTimezoneOffset(tzId);
+          if (dstActive) offset += 1;
+          int16_t localHour = (int16_t)now.hour() + offset;
+          if (localHour < 0) localHour += 24;
+          if (localHour >= 24) localHour -= 24;
+          uint8_t shownHour = (stored == 1) ? format12Hour((uint8_t)localHour) : (uint8_t)localHour;
           Serial.print("DBG:F requested=");
           Serial.print(f);
           Serial.print(" stored=");
           Serial.print(stored);
-          Serial.print(" rtcHour24=");
+          Serial.print(" rtcHour24UTC=");
           Serial.print(now.hour());
+          Serial.print(" localHour=");
+          Serial.print(localHour);
           Serial.print(" shownHour=");
           Serial.println(shownHour);
           Serial.print("OK:F");

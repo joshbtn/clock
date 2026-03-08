@@ -7,8 +7,8 @@
 
 void test_getDayOfWeek_knownDates(void) {
   // Known dates with verified day-of-week
-  // March 1, 2026 is a Saturday (6)
-  TEST_ASSERT_EQUAL(6, getDayOfWeek(2026, 3, 1));
+  // March 1, 2026 is a Sunday (0)
+  TEST_ASSERT_EQUAL(0, getDayOfWeek(2026, 3, 1));
   
   // January 1, 2000 was a Saturday (6)
   TEST_ASSERT_EQUAL(6, getDayOfWeek(2000, 1, 1));
@@ -43,8 +43,8 @@ void test_getDayOfWeek_leapYears(void) {
 // ============================================================================
 
 void test_getNthSunday_firstSunday(void) {
-  // March 2026: 1st Sunday is March 2
-  TEST_ASSERT_EQUAL(2, getNthSunday(2026, 3, 1));
+  // March 2026: 1st Sunday is March 1
+  TEST_ASSERT_EQUAL(1, getNthSunday(2026, 3, 1));
   
   // January 2026: 1st Sunday is January 4
   TEST_ASSERT_EQUAL(4, getNthSunday(2026, 1, 1));
@@ -54,8 +54,8 @@ void test_getNthSunday_firstSunday(void) {
 }
 
 void test_getNthSunday_secondSunday(void) {
-  // March 2026: 2nd Sunday is March 9
-  TEST_ASSERT_EQUAL(9, getNthSunday(2026, 3, 2));
+  // March 2026: 2nd Sunday is March 8
+  TEST_ASSERT_EQUAL(8, getNthSunday(2026, 3, 2));
   
   // November 2026: 2nd Sunday is November 8
   TEST_ASSERT_EQUAL(8, getNthSunday(2026, 11, 2));
@@ -122,14 +122,14 @@ void test_isDSTActive_USA_Canada_beforeDST(void) {
 }
 
 void test_isDSTActive_USA_Canada_marchTransition(void) {
-  // March 2026: 2nd Sunday is March 9
+  // March 2026: 2nd Sunday is March 8
   // Before 2nd Sunday: no DST
-  TEST_ASSERT_FALSE(isDSTActive_USA_Canada(2026, 3, 8));
   TEST_ASSERT_FALSE(isDSTActive_USA_Canada(2026, 3, 1));
+  TEST_ASSERT_FALSE(isDSTActive_USA_Canada(2026, 3, 7));
   
-  // From 2nd Sunday onward: DST active
+  // From 2nd Sunday (March 8) onward: DST active
+  TEST_ASSERT_TRUE(isDSTActive_USA_Canada(2026, 3, 8));
   TEST_ASSERT_TRUE(isDSTActive_USA_Canada(2026, 3, 9));
-  TEST_ASSERT_TRUE(isDSTActive_USA_Canada(2026, 3, 10));
   TEST_ASSERT_TRUE(isDSTActive_USA_Canada(2026, 3, 31));
 }
 
